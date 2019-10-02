@@ -25,6 +25,25 @@ type Item struct {
 	ItemId []string `json:"itemId"`
 }
 
+type searchPayload struct {
+	Ids string
+	Locations string
+}
+
+type ItemInventory struct {
+	ItemName string `json:"itemName"`
+	ItemVariant string `json:"itemVariant"`
+	HsnCode string `json:"hsnCode"`
+	ItemQuantity string `json:"itemQuantity"`
+	UomRaw string `json:"uomRaw"`
+	SmallboxQuantity string `json:"smallboxQuantity"`
+	UomSmall string `json:"uomSmall"`
+	BigcartonQuantity string `json:"bigcartonQuantity"`
+	UomBig string `json:"uomBig"`
+	WarehouseName string `json:"warehouseName"`
+	WarehouseLocation string `json:"warehouseLocation"`
+}
+
 var db *sql.DB
 
 func main() {
@@ -46,14 +65,14 @@ func main() {
 	router.HandleFunc("/", GetRoot).Methods("GET")
 	router.HandleFunc("/api/get/warehouses", GetWarehouses).Methods("GET")
 	router.HandleFunc("/api/get/items", GetItems).Methods("GET")
-	// router.HandleFunc("/api/search/items", SearchItems).Methods("POST")
-	// router.HandleFunc("/api/put/warehouse", CreateWarehouse).Methods("POST")
-	// router.HandleFunc("/api/put/itemmaster", CreateItemMaster).Methods("POST")
+	router.HandleFunc("/api/search/items", SearchItems).Methods("POST")
+	router.HandleFunc("/api/put/warehouse", CreateWarehouse).Methods("POST")
+	router.HandleFunc("/api/put/itemmaster", CreateItemMaster).Methods("POST")
 
 	http.Handle("/", router)
 
-	log.Println("Server started on port 3000")
-	log.Fatal(http.ListenAndServe(":3000", nil))
+	log.Println("Server started on port 80")
+	log.Fatal(http.ListenAndServe(":80", nil))
 }
 
 // GetRoot returns OK if server is alive
@@ -173,6 +192,154 @@ func GetItems(w http.ResponseWriter, r *http.Request) {
 			Name: name,
 			Description: strings.Split(description, "$"),
 			ItemId: strings.Split(itemId, "$"),
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// CreateWarehouse creates a new warehouse and returns the status
+func CreateWarehouse(w http.ResponseWriter, r *http.Request) {
+
+	warehouseName := r.FormValue("warehouseName")
+	warehouseLocation := r.FormValue("warehouseLocation")
+	gstin := r.FormValue("gstin")
+	contactName := r.FormValue("contactName")
+	contactNumber := r.FormValue("contactNumber")
+
+	warehouseInsertQuery := fmt.Sprintf(`INSERT INTO warehouse
+		(warehouseName, warehouseLocation, gstin, contactName, contactNumber)
+		VALUES
+		('%s', '%s', '%s', '%s', '%s')`, warehouseName, warehouseLocation, gstin, contactName, contactNumber)
+
+	_, err := db.Query(warehouseInsertQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool {
+			"success": false,
+		}
+	} else {
+		result = map[string]bool {
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// CreateItemMaster creates a new item and returns the status
+func CreateItemMaster(w http.ResponseWriter, r *http.Request) {
+
+	itemName := r.FormValue("itemName")
+	itemVariant := r.FormValue("itemVariant")
+	hsnCode := r.FormValue("hsnCode")
+	uomRaw := r.FormValue("uomRaw")
+	uomSmall := r.FormValue("uomSmall")
+	uomBig := r.FormValue("uomBig")
+	rawPerSmall := r.FormValue("rawPerSmall")
+	smallPerBig := r.FormValue("smallPerBig")
+
+	itemInsertQuery := fmt.Sprintf(`INSERT INTO itemMaster
+	(itemName, itemVariant, hsnCode, uomRaw, uomSmall, uomBig, rawPerSmall, smallPerBig)
+	VALUES
+	('%s', '%s', '%s, '%s', '%s', '%s', %s, %s)`, itemName, itemVariant, hsnCode, uomRaw, uomSmall, uomBig, rawPerSmall, smallPerBig)
+
+	_, err := db.Query(itemInsertQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool {
+			"success": false,
+		}
+	} else {
+		result = map[string]bool {
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// SearchItems searches for an item by id and location
+func SearchItems(w http.ResponseWriter, r *http.Request) {
+
+	requestedItemIdRaw := r.FormValue("itemId")
+	requestedLocationsRaw := r.FormValue("locations")
+
+	requestedItemId := strings.Split(strings.TrimSpace(requestedItemIdRaw), " ")
+	requestedLocations := strings.Split(strings.TrimSpace(requestedLocationsRaw), " ")
+
+	items := strings.Join(requestedItemId, ", ")
+	locations := strings.Join(requestedLocations, ", ")
+
+	var payload []ItemInventory
+
+	searchQuery := fmt.Sprintf(`SELECT 
+		itm.itemName, itm.itemVariant, itm.hsnCode, inv.itemQuantity, itm.uomRaw, inv.smallboxQuantity, itm.uomSmall, inv.bigcartonQuantity, itm.uomBig, wh.warehouseName, wh.warehouseLocation
+		FROM inventoryContents inv, itemMaster itm, warehouse wh
+		WHERE inv.itemId IN (%s) AND
+		inv.itemId = itm.itemId AND
+		inv.warehouseId = wh.warehouseId AND
+		wh.warehouseId IN (%s)`, items, locations)
+
+	allContents, err := db.Query(searchQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allContents.Next() {
+		var itemName string
+		var itemVariant string
+		var hsnCode string
+		var itemQuantity string
+		var uomRaw string
+		var smallboxQuantity string
+		var uomSmall string
+		var bigcartonQuantity string
+		var uomBig string
+		var warehouseName string
+		var warehouseLocation string
+
+		err := allContents.Scan(&itemName, &itemVariant, &hsnCode, &itemQuantity, &uomRaw, &smallboxQuantity, &uomSmall, &bigcartonQuantity, &uomBig, &warehouseName, &warehouseLocation)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := ItemInventory{
+			ItemName: itemName,
+			ItemVariant: itemVariant,
+			HsnCode: hsnCode,
+			ItemQuantity: itemQuantity,
+			UomRaw: uomRaw,
+			SmallboxQuantity: smallboxQuantity,
+			UomSmall: uomSmall,
+			BigcartonQuantity: bigcartonQuantity,
+			UomBig: uomBig,
+			WarehouseName: warehouseName,
+			WarehouseLocation: warehouseLocation,
 		}
 
 		payload = append(payload, singleObject)
