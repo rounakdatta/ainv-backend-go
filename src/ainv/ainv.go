@@ -19,6 +19,12 @@ type Warehouse struct {
 	WarehouseLocation string `json:"warehouseLocation"`
 }
 
+type Item struct {
+	Name string `json:"name"`
+	Description []string `json:"description"`
+	ItemId []string `json:"itemId"`
+}
+
 var db *sql.DB
 
 func main() {
@@ -39,7 +45,7 @@ func main() {
 
 	router.HandleFunc("/", GetRoot).Methods("GET")
 	router.HandleFunc("/api/get/warehouses", GetWarehouses).Methods("GET")
-	// router.HandleFunc("/api/get/items", GetItems).Methods("GET")
+	router.HandleFunc("/api/get/items", GetItems).Methods("GET")
 	// router.HandleFunc("/api/search/items", SearchItems).Methods("POST")
 	// router.HandleFunc("/api/put/warehouse", CreateWarehouse).Methods("POST")
 	// router.HandleFunc("/api/put/itemmaster", CreateItemMaster).Methods("POST")
@@ -67,11 +73,6 @@ func GetWarehouses(w http.ResponseWriter, r *http.Request) {
 		FROM warehouse
 		GROUP BY warehouseLocation`
 
-	err := db.Ping()
-	if err != nil {
-		fmt.Println(err)
-	}
-
 	allWh, err := db.Query(getWhNamesQuery)
 	if err != nil {
 		panic(err.Error())
@@ -89,6 +90,89 @@ func GetWarehouses(w http.ResponseWriter, r *http.Request) {
 		singleObject := Warehouse{
 			WarehouseId: strings.Split(warehouseId, "$"),
 			WarehouseLocation: warehouseLocation,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// GetItems returns all the items with description and ID
+func GetItems(w http.ResponseWriter, r *http.Request) {
+
+	requestedParameter, ok := r.URL.Query()["only"]
+
+	// case of special parameter requested
+	if ok && requestedParameter != nil {
+		getSpecificQuery := fmt.Sprintf(`SELECT DISTINCT 
+		%s FROM itemMaster`, requestedParameter[0])
+
+		specificItems, err := db.Query(getSpecificQuery)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		var payload []string
+
+		for specificItems.Next() {
+			var warehouseName string
+
+			err := specificItems.Scan(&warehouseName)
+			if err != nil {
+				panic(err.Error())
+			}
+
+			payload = append(payload, warehouseName)
+		}
+
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			log.Println(err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(payloadJSON)
+
+		return
+	}
+
+	var payload []Item
+
+	getItemDetailsQuery := `SELECT
+		itemName,
+		GROUP_CONCAT(itemVariant SEPARATOR '$') itemVariant,
+		GROUP_CONCAT(itemId SEPARATOR '$') itemId
+	FROM
+		itemMaster
+	GROUP BY
+		itemName`
+
+	allItems, err := db.Query(getItemDetailsQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allItems.Next() {
+		var name string
+		var description string
+		var itemId string
+
+		err := allItems.Scan(&name, &description, &itemId)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := Item{
+			Name: name,
+			Description: strings.Split(description, "$"),
+			ItemId: strings.Split(itemId, "$"),
 		}
 
 		payload = append(payload, singleObject)
