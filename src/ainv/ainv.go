@@ -17,6 +17,7 @@ import (
 type Rate struct {
 	RawPerSmall string `json:"rawPerSmall"`
 	SmallPerBig string `json:"smallPerBig"`
+	CartonQuantity string `json:"cartonQuantity"`
 }
 
 type Warehouse struct {
@@ -179,12 +180,14 @@ func GetAllWarehouses(w http.ResponseWriter, r *http.Request) {
 func GetRate(w http.ResponseWriter, r *http.Request) {
 
 	requestedItemId := r.FormValue("itemId")
+	requestedWarehouseId := r.FormValue("warehouseId")
 	var payload []Rate
 
-	getRatesQuery := fmt.Sprintf(`SELECT 
-		rawPerSmall, smallPerBig
-		FROM itemMaster
-		WHERE itemId='%s'`, requestedItemId)
+	getRatesQuery := fmt.Sprintf(`SELECT im.rawPerSmall, im.smallPerBig, IFNULL(ic.bigcartonQuantity, 0) AS cartonQuantity
+		FROM itemMaster im
+		LEFT JOIN inventoryContents ic
+		ON (im.itemId = ic.itemId AND ic.warehouseId = '%s')
+		WHERE im.itemId = '%s'`, requestedWarehouseId, requestedItemId)
 
 	rateDetails, err := db.Query(getRatesQuery)
 	if err != nil {
@@ -194,8 +197,9 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 	for rateDetails.Next() {
 		var rawPerSmall string
 		var smallPerBig string
+		var cartonQuantity string
 
-		err := rateDetails.Scan(&rawPerSmall, &smallPerBig)
+		err := rateDetails.Scan(&rawPerSmall, &smallPerBig, &cartonQuantity)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -203,6 +207,7 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 		singleObject := Rate{
 			RawPerSmall: rawPerSmall,
 			SmallPerBig: smallPerBig,
+			CartonQuantity: cartonQuantity,
 		}
 
 		payload = append(payload, singleObject)
