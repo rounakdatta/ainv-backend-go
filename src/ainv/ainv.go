@@ -14,9 +14,19 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type Rate struct {
+	RawPerSmall string `json:"rawPerSmall"`
+	SmallPerBig string `json:"smallPerBig"`
+}
+
 type Warehouse struct {
 	WarehouseId []string `json:"warehouseId"`
 	WarehouseLocation string `json:"warehouseLocation"`
+}
+
+type WarehouseEntity struct {
+	WarehouseId string `json:"warehouseId"`
+	WarehouseName string `json:"warehouseName"`
 }
 
 type Item struct {
@@ -64,7 +74,9 @@ func main() {
 
 	router.HandleFunc("/", GetRoot).Methods("GET")
 	router.HandleFunc("/api/get/warehouses", GetWarehouses).Methods("GET")
+	router.HandleFunc("/api/get/all/warehouses", GetAllWarehouses).Methods("GET")
 	router.HandleFunc("/api/get/items", GetItems).Methods("GET")
+	router.HandleFunc("/api/get/rate", GetRate).Methods("POST")
 	router.HandleFunc("/api/search/items", SearchItems).Methods("POST")
 	router.HandleFunc("/api/put/warehouse", CreateWarehouse).Methods("POST")
 	router.HandleFunc("/api/put/itemmaster", CreateItemMaster).Methods("POST")
@@ -81,7 +93,7 @@ func GetRoot(w http.ResponseWriter, r *http.Request) {
 	w.Write(payload)
 }
 
-// GetWarehouses returns all the warehouses with their ID
+// GetWarehouses returns all the locations with their warehouse IDs
 func GetWarehouses(w http.ResponseWriter, r *http.Request) {
 
 	var payload []Warehouse
@@ -109,6 +121,88 @@ func GetWarehouses(w http.ResponseWriter, r *http.Request) {
 		singleObject := Warehouse{
 			WarehouseId: strings.Split(warehouseId, "$"),
 			WarehouseLocation: warehouseLocation,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// GetAllWarehouses returns all the warehouses with their ID
+func GetAllWarehouses(w http.ResponseWriter, r *http.Request) {
+
+	var payload []WarehouseEntity
+
+	getWhNamesQuery := `SELECT 
+		warehouseId, CONCAT(warehouseName, ", ", warehouseLocation) AS warehouseName
+		FROM warehouse`
+
+	allWh, err := db.Query(getWhNamesQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allWh.Next() {
+		var warehouseId string
+		var warehouseName string
+
+		err := allWh.Scan(&warehouseId, &warehouseName)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := WarehouseEntity{
+			WarehouseId: warehouseId,
+			WarehouseName: warehouseName,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// GetRate returns the rate for a particular item
+func GetRate(w http.ResponseWriter, r *http.Request) {
+
+	requestedItemId := r.FormValue("itemId")
+	var payload []Rate
+
+	getRatesQuery := fmt.Sprintf(`SELECT 
+		rawPerSmall, smallPerBig
+		FROM itemMaster
+		WHERE itemId='%s'`, requestedItemId)
+
+	rateDetails, err := db.Query(getRatesQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for rateDetails.Next() {
+		var rawPerSmall string
+		var smallPerBig string
+
+		err := rateDetails.Scan(&rawPerSmall, &smallPerBig)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := Rate{
+			RawPerSmall: rawPerSmall,
+			SmallPerBig: smallPerBig,
 		}
 
 		payload = append(payload, singleObject)
