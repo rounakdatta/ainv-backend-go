@@ -72,20 +72,21 @@ func main() {
 
 	// create the router and define the APIs
 	router := mux.NewRouter()
+	ainvRouter := router.PathPrefix("/ainv").Subrouter()
 
-	router.HandleFunc("/", GetRoot).Methods("GET")
-	router.HandleFunc("/api/get/warehouses", GetWarehouses).Methods("GET")
-	router.HandleFunc("/api/get/all/warehouses", GetAllWarehouses).Methods("GET")
-	router.HandleFunc("/api/get/items", GetItems).Methods("GET")
-	router.HandleFunc("/api/get/rate", GetRate).Methods("POST")
-	router.HandleFunc("/api/search/items", SearchItems).Methods("POST")
-	router.HandleFunc("/api/put/warehouse", CreateWarehouse).Methods("POST")
-	router.HandleFunc("/api/put/itemmaster", CreateItemMaster).Methods("POST")
+	ainvRouter.HandleFunc("/", GetRoot).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/warehouses/", GetWarehouses).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/all/warehouses/", GetAllWarehouses).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/items/", GetItems).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/rate/", GetRate).Methods("POST")
+	ainvRouter.HandleFunc("/api/search/items/", SearchItems).Methods("POST")
+	ainvRouter.HandleFunc("/api/put/warehouse/", CreateWarehouse).Methods("POST")
+	ainvRouter.HandleFunc("/api/put/itemmaster/", CreateItemMaster).Methods("POST")
 
 	http.Handle("/", router)
 
-	log.Println("Server started on port 80")
-	log.Fatal(http.ListenAndServe(":80", nil))
+	log.Println("Server started on port 1234")
+	log.Fatal(http.ListenAndServe(":1234", nil))
 }
 
 // GetRoot returns OK if server is alive
