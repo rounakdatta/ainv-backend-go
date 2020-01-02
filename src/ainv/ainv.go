@@ -25,6 +25,11 @@ type Warehouse struct {
 	WarehouseLocation string `json:"warehouseLocation"`
 }
 
+type Client struct {
+	ClientId string `json:"clientId"`
+	ClientName string `json:"clientName"`
+}
+
 type WarehouseEntity struct {
 	WarehouseId string `json:"warehouseId"`
 	WarehouseName string `json:"warehouseName"`
@@ -77,11 +82,13 @@ func main() {
 	ainvRouter.HandleFunc("/", GetRoot).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/warehouses/", GetWarehouses).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/all/warehouses/", GetAllWarehouses).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/all/clients/", GetAllClients).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/items/", GetItems).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/rate/", GetRate).Methods("POST")
 	ainvRouter.HandleFunc("/api/search/items/", SearchItems).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/warehouse/", CreateWarehouse).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/itemmaster/", CreateItemMaster).Methods("POST")
+	ainvRouter.HandleFunc("/api/put/transaction/", CreateTransaction).Methods("POST")
 
 	http.Handle("/", router)
 
@@ -176,6 +183,47 @@ func GetAllWarehouses(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(payloadJSON)
 }
+
+// GetAllClients returns all the clients with their ID
+func GetAllClients(w http.ResponseWriter, r *http.Request) {
+
+	var payload []Client
+
+	getClientNamesQuery := `SELECT 
+		id, clientName
+		FROM client`
+
+	allClients, err := db.Query(getClientNamesQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allClients.Next() {
+		var clientId string
+		var clientName string
+
+		err := allClients.Scan(&clientId, &clientName)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := Client{
+			ClientId: clientId,
+			ClientName: clientName,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
 
 // GetRate returns the rate for a particular item
 func GetRate(w http.ResponseWriter, r *http.Request) {
@@ -365,6 +413,61 @@ func CreateItemMaster(w http.ResponseWriter, r *http.Request) {
 	var result map[string]bool
 
 	if err != nil {
+		result = map[string]bool {
+			"success": false,
+		}
+	} else {
+		result = map[string]bool {
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// CreateTransaction creates a transaction
+func CreateTransaction(w http.ResponseWriter, r *http.Request) {
+
+	trackingNumber := r.FormValue("trackingNumber")
+	entryDate := r.FormValue("entryDate")
+	itemId := r.FormValue("itemId")
+	warehouseId := r.FormValue("warehouseId")
+	comeOrGo := r.FormValue("comeOrGo")
+	clientId := r.FormValue("clientId")
+	bigQuantity := r.FormValue("bigQuantity")
+	currentValue := r.FormValue("currentValue")
+	changeValue := r.FormValue("changeValue")
+	finalValue := r.FormValue("finalValue")
+	secretRate1 := r.FormValue("secretRate1")
+	secretRate2 := r.FormValue("secretRate2")
+	totalPcs := r.FormValue("totalPcs")
+	assdValue := r.FormValue("assdValue")
+	dutyValue := r.FormValue("dutyValue")
+	gstValue := r.FormValue("gstValue")
+	totalValue := r.FormValue("totalValue")
+	valuePerPiece := r.FormValue("valuePerPiece")
+	totalPieces := r.FormValue("totalPieces")
+	isPaid := r.FormValue("isPaid")
+	date := r.FormValue("date")
+
+	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
+	(trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, date)
+	VALUES
+	('%s', '%s', '%s', '%s', %s, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, date)
+	log.Println(transactionQuery)
+
+	_, err := db.Query(transactionQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		log.Println(err)
 		result = map[string]bool {
 			"success": false,
 		}
