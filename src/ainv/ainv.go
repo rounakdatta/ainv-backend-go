@@ -8,6 +8,7 @@ import (
 	"os"
 	"log"
 	"net/http"
+	"strconv"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
@@ -60,6 +61,29 @@ type ItemInventory struct {
 	WarehouseLocation string `json:"warehouseLocation"`
 }
 
+type SalesTransaction struct {
+	TransactionId string `json:"transactionId"`
+	TrackingNumber string `json:"trackingNumber"`
+	EntryDate string `json:"entryDate"`
+	ItemId string `json:"itemId"`
+	ItemName string `json:"itemName"`
+	ItemVariant string `json:"itemVariant"`
+	WarehouseId string `json:"warehouseId"`
+	WarehouseName string `json:"warehouseName"`
+	WarehouseLocation string `json:"warehouseLocation"`
+	ClientId string `json:"clientId"`
+	ClientName string `json:"clientName"`
+	ChangeStock string `json:"changeStock"`
+	FinalStock string `json:"finalStock"`
+	TotalPcs string `json:"totalPcs"`
+	MaterialValue string `json:"materialValue"`
+	GstValue string `json:"gstValue"`
+	TotalValue string `json:"totalValue"`
+	ValuePerPiece float64 `json:"valuePerPiece"`
+	IsPaid string `json:"isPaid"`
+	PaymentDate string `json:"paymentDate"`
+}
+
 var db *sql.DB
 
 func main() {
@@ -89,6 +113,7 @@ func main() {
 	ainvRouter.HandleFunc("/api/put/warehouse/", CreateWarehouse).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/itemmaster/", CreateItemMaster).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/transaction/", CreateTransaction).Methods("POST")
+	ainvRouter.HandleFunc("/api/search/sales/", SearchSales).Methods("POST")
 
 	http.Handle("/", router)
 
@@ -456,10 +481,14 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	isPaid := r.FormValue("isPaid")
 	date := r.FormValue("date")
 
+	if date == "Expected Date" {
+		date = "NULL"
+	}
+
 	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
 	(trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, date)
 	VALUES
-	('%s', '%s', '%s', '%s', %s, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, date)
+	('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, date)
 	log.Println(transactionQuery)
 
 	_, err := db.Query(transactionQuery)
@@ -543,6 +572,105 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 			UomBig: uomBig,
 			WarehouseName: warehouseName,
 			WarehouseLocation: warehouseLocation,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// SearchSales searches for the sales transactions by filters
+func SearchSales(w http.ResponseWriter, r *http.Request) {
+
+	salesInvoiceNumber := r.FormValue("salesInvoiceNumber")
+	clientId := r.FormValue("clientId")
+
+	var payload []SalesTransaction
+	var searchQuery string
+
+	searchQuerySubstring := fmt.Sprintf(`SELECT
+		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.warehouseId, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.date
+		FROM transaction tr, itemMaster im, warehouse wh, client cl
+		WHERE tr.itemId = im.itemId AND
+		tr.warehouseId = wh.warehouseId AND
+		tr.clientId = cl.id`)
+	trackingNumberSubstring := fmt.Sprintf("tr.trackingNumber = '%s'", salesInvoiceNumber)
+	clientIdSubstring := fmt.Sprintf("tr.clientId = '%s'", clientId)
+
+	if salesInvoiceNumber == "all" && clientId == "all" {
+		searchQuery = fmt.Sprintf("%s", searchQuerySubstring)
+	} else if salesInvoiceNumber == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, clientIdSubstring)
+	} else if clientId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, trackingNumberSubstring)
+	} else {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, clientIdSubstring)
+	}
+
+	allTransactions, err := db.Query(searchQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allTransactions.Next() {
+		var transactionId string
+		var trackingNumber string
+		var entryDate string
+		var itemId string
+		var itemName string
+		var itemVariant string
+		var warehouseId string
+		var warehouseName string
+		var warehouseLocation string
+		var clientId string
+		var clientName string
+		var changeValue string
+		var finalValue string
+		var totalPcs string
+		var materialValue string
+		var gstValue string
+		var totalValue string
+		var valuePerPiece float64
+		var isPaid string
+		var paymentDate string
+
+		err := allTransactions.Scan(&transactionId, &trackingNumber, &entryDate, &itemId, &itemName, &itemVariant, &warehouseId, &warehouseName, &warehouseLocation, &clientId, &clientName, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paymentDate)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		totalValueFloat, _ := strconv.ParseFloat(totalValue, 64)
+		totalPcsFloat, _ := strconv.ParseFloat(totalPcs, 64)
+		valuePerPiece = totalValueFloat / totalPcsFloat
+
+		singleObject := SalesTransaction{
+			TransactionId: transactionId,
+			TrackingNumber: trackingNumber,
+			EntryDate: entryDate,
+			ItemId: itemId,
+			ItemName: itemName,
+			ItemVariant: itemVariant,
+			WarehouseId: warehouseId,
+			WarehouseName: warehouseName,
+			WarehouseLocation: warehouseLocation,
+			ClientId: clientId,
+			ClientName: clientName,
+			ChangeStock: changeValue,
+			FinalStock: finalValue,
+			TotalPcs: totalPcs,
+			MaterialValue: materialValue,
+			GstValue: gstValue,
+			TotalValue: totalValue,
+			ValuePerPiece: valuePerPiece,
+			IsPaid: isPaid,
+			PaymentDate: paymentDate,
 		}
 
 		payload = append(payload, singleObject)
