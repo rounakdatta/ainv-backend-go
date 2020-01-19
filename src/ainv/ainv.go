@@ -13,6 +13,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
+	
 )
 
 type Rate struct {
@@ -455,6 +456,107 @@ func CreateItemMaster(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(payloadJSON)
 }
+// InventoryContentQualityCheck ensures sanity of the numbers and ensures the calculation is correct
+func InventoryContentQualityCheck(direction string, currentInv string, changeInv string, finalInv string) bool {
+	currentInvNum, _ := strconv.Atoi(currentInv)
+	changeInvNum, _ := strconv.Atoi(changeInv)
+	finalInvNum, _ := strconv.Atoi(finalInv)
+
+	if ((currentInvNum + changeInvNum) != finalInvNum) {
+		return false
+	}
+	if ((currentInvNum < finalInvNum) && (direction == "out")) {
+		return false
+	}
+	if ((currentInvNum > finalInvNum) && (direction == "in")) {
+		return false
+	}
+
+	log.Println("InventoryContentQualityCheck succeeded")
+	return true
+}
+
+// InventoryQuantityQualityCheck ensures the total quantity calculation is correct
+func InventoryQuantityQualityCheck(quantity string, rate1 string, rate2 string, totalPcs string) bool {
+	quantityNum, _ := strconv.Atoi(quantity)
+	rate1Num, _ := strconv.Atoi(rate1)
+	rate2Num, _ := strconv.Atoi(rate2)
+	totalPcsNum, _ := strconv.Atoi(totalPcs)
+
+	if totalPcsNum == 0 {
+		return false
+	}
+	if (quantityNum * rate1Num * rate2Num != totalPcsNum) {
+		return false
+	}
+
+	log.Println("InventoryQuantityQualityCheck succeeded")
+	return true
+}
+
+// InventoryValueQualityCheck ensures the transaction value calculations are correct
+func InventoryValueQualityCheck(assdValue string, dutyValue string, gstValue string, totalValue string) bool {
+	assdValueNum, _ := strconv.ParseFloat(assdValue, 64)
+	dutyValueNum, _ := strconv.ParseFloat(dutyValue, 64)
+	gstValueNum, _ := strconv.ParseFloat(gstValue, 64)
+	totalValueNum, _ := strconv.ParseFloat(totalValue, 64)
+
+	if ((assdValueNum + dutyValueNum + gstValueNum) != totalValueNum) {
+		return false
+	}
+
+	log.Println("InventoryValueQualityCheck succeeded")
+	return true
+}
+
+// DataSanityDriver is a driver function to trigger checks for inventoryContent, inventoryQuantity, inventoryValue
+func DataSanityDriver(direction string, currentInv string, changeInv string, finalInv string, quantity string, rate1 string, rate2 string, totalPcs string, assdValue string, dutyValue string, gstValue string, totalValue string) bool {
+	return InventoryContentQualityCheck(direction, currentInv, changeInv, finalInv) && InventoryQuantityQualityCheck(quantity, rate1, rate2, totalPcs) && InventoryValueQualityCheck(assdValue, dutyValue, gstValue, totalValue)
+}
+
+func checkCount(rows *sql.Row) (count int) {
+	rows.Scan(&count)
+
+   log.Println(count)
+   return count
+}
+
+// CommitInventoryChanges commits the inventory changes to the inventory table
+func CommitInventoryChanges(itemId string, warehouseId string, direction string, currentValue string, changeValue string, finalValue string, bigQuantity string, secretRate1 string, secretRate2 string, totalPcs string) bool {
+	bigQuantityNum, _ := strconv.Atoi(bigQuantity)
+	secretRate1Num, _ := strconv.Atoi(secretRate1)
+	secretRate2Num, _ := strconv.Atoi(secretRate2)
+
+	smallboxQuantityNum := bigQuantityNum * secretRate1Num
+	itemQuantityNum := smallboxQuantityNum * secretRate2Num
+
+	var executionQuery string
+
+	updateQuery := fmt.Sprintf(`UPDATE inventoryContents
+		SET bigcartonQuantity = bigcartonQuantity + %d, smallboxQuantity = smallboxQuantity + %d, itemQuantity = itemQuantity + %d
+		WHERE itemId = '%s' AND warehouseId = '%s' AND bigcartonQuantity = '%s'`, bigQuantityNum, smallboxQuantityNum, itemQuantityNum, itemId, warehouseId, currentValue)
+
+	insertQuery := fmt.Sprintf(`INSERT INTO inventoryContents
+		(itemId, itemQuantity, smallboxQuantity, bigcartonQuantity, warehouseId)
+		VALUES
+		('%s', '%d', '%d', '%s', '%s')`, itemId, itemQuantityNum, smallboxQuantityNum, bigQuantity, warehouseId)
+
+	checkerQuery := fmt.Sprintf(`SELECT COUNT(*) FROM inventoryContents WHERE itemId = '%s' AND warehouseId = '%s'`, itemId, warehouseId)
+	countRow := db.QueryRow(checkerQuery)
+	if checkCount(countRow) < 1 {
+		executionQuery = insertQuery
+	} else {
+		executionQuery = updateQuery
+	}
+
+	_, err := db.Query(executionQuery)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
+	return true
+}
 
 // CreateTransaction creates a transaction
 func CreateTransaction(w http.ResponseWriter, r *http.Request) {
@@ -481,19 +583,36 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	isPaid := r.FormValue("isPaid")
 	date := r.FormValue("date")
 
+	changeValue = strings.TrimSpace(changeValue)
 	if date == "Expected Date" {
 		date = "NULL"
+	}
+
+	var result map[string]bool
+
+	qualityStatus := DataSanityDriver(comeOrGo, currentValue, changeValue, finalValue, bigQuantity, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue)
+	if !qualityStatus {
+		result = map[string]bool {
+			"success": false,
+		}
+
+		payloadJSON, err := json.Marshal(result)
+		if err != nil {
+			log.Println(err)
+		}
+	
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(payloadJSON)
+
+		return
 	}
 
 	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
 	(trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, date)
 	VALUES
 	('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, date)
-	log.Println(transactionQuery)
 
 	_, err := db.Query(transactionQuery)
-
-	var result map[string]bool
 
 	if err != nil {
 		log.Println(err)
@@ -506,10 +625,21 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err == nil {
+		commitStatus := CommitInventoryChanges(itemId, warehouseId, comeOrGo, currentValue, changeValue, finalValue, bigQuantity, secretRate1, secretRate2, totalPcs)
+		if !commitStatus {
+			result = map[string]bool {
+				"success": false,
+			}
+		}
+	}
+
 	payloadJSON, err := json.Marshal(result)
 	if err != nil {
 		log.Println(err)
 	}
+
+	log.Println(payloadJSON)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(payloadJSON)
