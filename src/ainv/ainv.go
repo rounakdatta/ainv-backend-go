@@ -527,6 +527,10 @@ func CommitInventoryChanges(itemId string, warehouseId string, direction string,
 	secretRate1Num, _ := strconv.Atoi(secretRate1)
 	secretRate2Num, _ := strconv.Atoi(secretRate2)
 
+	if direction == "out" {
+		bigQuantityNum = -bigQuantityNum
+	}
+
 	smallboxQuantityNum := bigQuantityNum * secretRate1Num
 	itemQuantityNum := smallboxQuantityNum * secretRate2Num
 
