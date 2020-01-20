@@ -82,6 +82,7 @@ type SalesTransaction struct {
 	TotalValue string `json:"totalValue"`
 	ValuePerPiece float64 `json:"valuePerPiece"`
 	IsPaid string `json:"isPaid"`
+	PaidAmount string `json:"paidAmount"`
 	PaymentDate string `json:"paymentDate"`
 }
 
@@ -105,15 +106,19 @@ func main() {
 	ainvRouter := router.PathPrefix("/ainv").Subrouter()
 
 	ainvRouter.HandleFunc("/", GetRoot).Methods("GET")
+
 	ainvRouter.HandleFunc("/api/get/warehouses/", GetWarehouses).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/all/warehouses/", GetAllWarehouses).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/all/clients/", GetAllClients).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/items/", GetItems).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/rate/", GetRate).Methods("POST")
-	ainvRouter.HandleFunc("/api/search/items/", SearchItems).Methods("POST")
+
 	ainvRouter.HandleFunc("/api/put/warehouse/", CreateWarehouse).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/itemmaster/", CreateItemMaster).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/transaction/", CreateTransaction).Methods("POST")
+	ainvRouter.HandleFunc("/api/put/client/", CreateClient).Methods("POST")
+
+	ainvRouter.HandleFunc("/api/search/items/", SearchItems).Methods("POST")
 	ainvRouter.HandleFunc("/api/search/sales/", SearchSales).Methods("POST")
 
 	http.Handle("/", router)
@@ -432,9 +437,44 @@ func CreateItemMaster(w http.ResponseWriter, r *http.Request) {
 	itemInsertQuery := fmt.Sprintf(`INSERT INTO itemMaster
 	(itemName, itemVariant, hsnCode, uomRaw, uomSmall, uomBig, rawPerSmall, smallPerBig)
 	VALUES
-	('%s', '%s', '%s, '%s', '%s', '%s', %s, %s)`, itemName, itemVariant, hsnCode, uomRaw, uomSmall, uomBig, rawPerSmall, smallPerBig)
+	('%s', '%s', '%s', '%s', '%s', '%s', %s, %s)`, itemName, itemVariant, hsnCode, uomRaw, uomSmall, uomBig, rawPerSmall, smallPerBig)
+	log.Println(itemInsertQuery)
 
 	_, err := db.Query(itemInsertQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		log.Println(err)
+		result = map[string]bool {
+			"success": false,
+		}
+	} else {
+		result = map[string]bool {
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// CreateClient creates a new client and returns the status
+func CreateClient(w http.ResponseWriter, r *http.Request) {
+
+	clientName := r.FormValue("clientName")
+
+	clientInsertQuery := fmt.Sprintf(`INSERT INTO client
+		(clientName)
+		VALUES
+		('%s')`, clientName)
+
+	_, err := db.Query(clientInsertQuery)
 
 	var result map[string]bool
 
@@ -456,6 +496,7 @@ func CreateItemMaster(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(payloadJSON)
 }
+
 // InventoryContentQualityCheck ensures sanity of the numbers and ensures the calculation is correct
 func InventoryContentQualityCheck(direction string, currentInv string, changeInv string, finalInv string) bool {
 	currentInvNum, _ := strconv.Atoi(currentInv)
@@ -585,6 +626,7 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	valuePerPiece := r.FormValue("valuePerPiece")
 	totalPieces := r.FormValue("totalPieces")
 	isPaid := r.FormValue("isPaid")
+	paidAmount := r.FormValue("paidAmount")
 	date := r.FormValue("date")
 
 	changeValue = strings.TrimSpace(changeValue)
@@ -612,9 +654,9 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
-	(trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, date)
+	(trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
 	VALUES
-	('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, date)
+	('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s', '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
 
 	_, err := db.Query(transactionQuery)
 
@@ -730,7 +772,7 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 	var searchQuery string
 
 	searchQuerySubstring := fmt.Sprintf(`SELECT
-		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.warehouseId, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.date
+		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.warehouseId, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.paidAmount, tr.date
 		FROM transaction tr, itemMaster im, warehouse wh, client cl
 		WHERE tr.itemId = im.itemId AND
 		tr.warehouseId = wh.warehouseId AND
@@ -773,9 +815,10 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		var totalValue string
 		var valuePerPiece float64
 		var isPaid string
+		var paidAmount string
 		var paymentDate string
 
-		err := allTransactions.Scan(&transactionId, &trackingNumber, &entryDate, &itemId, &itemName, &itemVariant, &warehouseId, &warehouseName, &warehouseLocation, &clientId, &clientName, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paymentDate)
+		err := allTransactions.Scan(&transactionId, &trackingNumber, &entryDate, &itemId, &itemName, &itemVariant, &warehouseId, &warehouseName, &warehouseLocation, &clientId, &clientName, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -804,6 +847,7 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 			TotalValue: totalValue,
 			ValuePerPiece: valuePerPiece,
 			IsPaid: isPaid,
+			PaidAmount: paidAmount,
 			PaymentDate: paymentDate,
 		}
 
