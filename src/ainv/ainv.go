@@ -60,6 +60,7 @@ type ItemInventory struct {
 	UomBig string `json:"uomBig"`
 	WarehouseName string `json:"warehouseName"`
 	WarehouseLocation string `json:"warehouseLocation"`
+	ClientName string `json:"clientName"`
 }
 
 type SalesTransaction struct {
@@ -117,6 +118,9 @@ func main() {
 	ainvRouter.HandleFunc("/api/put/itemmaster/", CreateItemMaster).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/transaction/", CreateTransaction).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/client/", CreateClient).Methods("POST")
+
+	ainvRouter.HandleFunc("/api/update/paidamount/", UpdatePaidAmount).Methods("POST")
+	ainvRouter.HandleFunc("/api/update/paymentdate/", UpdatePaymentDate).Methods("POST")
 
 	ainvRouter.HandleFunc("/api/search/items/", SearchItems).Methods("POST")
 	ainvRouter.HandleFunc("/api/search/sales/", SearchSales).Methods("POST")
@@ -261,14 +265,16 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 
 	requestedItemId := r.FormValue("itemId")
 	requestedWarehouseId := r.FormValue("warehouseId")
+	requestedClientId := r.FormValue("clientId")
 	var payload []Rate
 
 	getRatesQuery := fmt.Sprintf(`SELECT im.rawPerSmall, im.smallPerBig, IFNULL(ic.bigcartonQuantity, 0) AS cartonQuantity
 		FROM itemMaster im
 		LEFT JOIN inventoryContents ic
-		ON (im.itemId = ic.itemId AND ic.warehouseId = '%s')
-		WHERE im.itemId = '%s'`, requestedWarehouseId, requestedItemId)
+		ON (im.itemId = ic.itemId AND ic.warehouseId = '%s' AND ic.clientId = '%s')
+		WHERE im.itemId = '%s'`, requestedWarehouseId, requestedClientId, requestedItemId)
 
+	log.Println(getRatesQuery)
 	rateDetails, err := db.Query(getRatesQuery)
 	if err != nil {
 		panic(err.Error())
@@ -298,6 +304,7 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 
+	log.Println(payload)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(payloadJSON)
 }
@@ -563,7 +570,7 @@ func checkCount(rows *sql.Row) (count int) {
 }
 
 // CommitInventoryChanges commits the inventory changes to the inventory table
-func CommitInventoryChanges(itemId string, warehouseId string, direction string, currentValue string, changeValue string, finalValue string, bigQuantity string, secretRate1 string, secretRate2 string, totalPcs string) bool {
+func CommitInventoryChanges(itemId string, warehouseId string, clientId string, direction string, currentValue string, changeValue string, finalValue string, bigQuantity string, secretRate1 string, secretRate2 string, totalPcs string) bool {
 	bigQuantityNum, _ := strconv.Atoi(bigQuantity)
 	secretRate1Num, _ := strconv.Atoi(secretRate1)
 	secretRate2Num, _ := strconv.Atoi(secretRate2)
@@ -579,14 +586,14 @@ func CommitInventoryChanges(itemId string, warehouseId string, direction string,
 
 	updateQuery := fmt.Sprintf(`UPDATE inventoryContents
 		SET bigcartonQuantity = bigcartonQuantity + %d, smallboxQuantity = smallboxQuantity + %d, itemQuantity = itemQuantity + %d
-		WHERE itemId = '%s' AND warehouseId = '%s' AND bigcartonQuantity = '%s'`, bigQuantityNum, smallboxQuantityNum, itemQuantityNum, itemId, warehouseId, currentValue)
+		WHERE itemId = '%s' AND warehouseId = '%s' AND clientId = '%s' AND bigcartonQuantity = '%s'`, bigQuantityNum, smallboxQuantityNum, itemQuantityNum, itemId, warehouseId, clientId, currentValue)
 
 	insertQuery := fmt.Sprintf(`INSERT INTO inventoryContents
-		(itemId, itemQuantity, smallboxQuantity, bigcartonQuantity, warehouseId)
+		(itemId, itemQuantity, smallboxQuantity, bigcartonQuantity, warehouseId, clientId)
 		VALUES
-		('%s', '%d', '%d', '%s', '%s')`, itemId, itemQuantityNum, smallboxQuantityNum, bigQuantity, warehouseId)
+		('%s', '%d', '%d', '%s', '%s', '%s')`, itemId, itemQuantityNum, smallboxQuantityNum, bigQuantity, warehouseId, clientId)
 
-	checkerQuery := fmt.Sprintf(`SELECT COUNT(*) FROM inventoryContents WHERE itemId = '%s' AND warehouseId = '%s'`, itemId, warehouseId)
+	checkerQuery := fmt.Sprintf(`SELECT COUNT(*) FROM inventoryContents WHERE itemId = '%s' AND warehouseId = '%s' AND clientId = '%s'`, itemId, warehouseId, clientId)
 	countRow := db.QueryRow(checkerQuery)
 	if checkCount(countRow) < 1 {
 		executionQuery = insertQuery
@@ -672,7 +679,7 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err == nil {
-		commitStatus := CommitInventoryChanges(itemId, warehouseId, comeOrGo, currentValue, changeValue, finalValue, bigQuantity, secretRate1, secretRate2, totalPcs)
+		commitStatus := CommitInventoryChanges(itemId, warehouseId, clientId, comeOrGo, currentValue, changeValue, finalValue, bigQuantity, secretRate1, secretRate2, totalPcs)
 		if !commitStatus {
 			result = map[string]bool {
 				"success": false,
@@ -706,11 +713,12 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 	var payload []ItemInventory
 
 	searchQuery := fmt.Sprintf(`SELECT 
-		itm.itemName, itm.itemVariant, itm.hsnCode, inv.itemQuantity, itm.uomRaw, inv.smallboxQuantity, itm.uomSmall, inv.bigcartonQuantity, itm.uomBig, wh.warehouseName, wh.warehouseLocation
-		FROM inventoryContents inv, itemMaster itm, warehouse wh
+		itm.itemName, itm.itemVariant, itm.hsnCode, inv.itemQuantity, itm.uomRaw, inv.smallboxQuantity, itm.uomSmall, inv.bigcartonQuantity, itm.uomBig, wh.warehouseName, wh.warehouseLocation, cl.clientName
+		FROM inventoryContents inv, itemMaster itm, warehouse wh, client cl
 		WHERE inv.itemId IN (%s) AND
 		inv.itemId = itm.itemId AND
 		inv.warehouseId = wh.warehouseId AND
+		inv.clientId = cl.id AND
 		wh.warehouseId IN (%s)`, items, locations)
 
 	allContents, err := db.Query(searchQuery)
@@ -730,8 +738,9 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 		var uomBig string
 		var warehouseName string
 		var warehouseLocation string
+		var clientName string
 
-		err := allContents.Scan(&itemName, &itemVariant, &hsnCode, &itemQuantity, &uomRaw, &smallboxQuantity, &uomSmall, &bigcartonQuantity, &uomBig, &warehouseName, &warehouseLocation)
+		err := allContents.Scan(&itemName, &itemVariant, &hsnCode, &itemQuantity, &uomRaw, &smallboxQuantity, &uomSmall, &bigcartonQuantity, &uomBig, &warehouseName, &warehouseLocation, &clientName)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -748,6 +757,7 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 			UomBig: uomBig,
 			WarehouseName: warehouseName,
 			WarehouseLocation: warehouseLocation,
+			ClientName: clientName,
 		}
 
 		payload = append(payload, singleObject)
@@ -855,6 +865,73 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// UpdatePaidAmount updates the expected payment date for a particular transaction and returns the status
+func UpdatePaidAmount(w http.ResponseWriter, r *http.Request) {
+
+	transactionId := r.FormValue("transactionId")
+	paidAmount := r.FormValue("paidAmount")
+
+	updateQuery := fmt.Sprintf(`UPDATE transaction
+		SET paidAmount = '%s',
+		isPaid = CASE WHEN totalValue = paidAmount THEN true ELSE false END
+		WHERE id = '%s'`, paidAmount, transactionId)
+
+	_, err := db.Query(updateQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool {
+			"success": false,
+		}
+	} else {
+		result = map[string]bool {
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// UpdatePaymentDate updates the expected payment date for a particular transaction and returns the status
+func UpdatePaymentDate(w http.ResponseWriter, r *http.Request) {
+
+	transactionId := r.FormValue("transactionId")
+	paymentDate := r.FormValue("paymentDate")
+
+	updateQuery := fmt.Sprintf(`UPDATE transaction
+		SET date = '%s'
+		WHERE id = '%s'`, paymentDate, transactionId)
+
+	_, err := db.Query(updateQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool {
+			"success": false,
+		}
+	} else {
+		result = map[string]bool {
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
 	if err != nil {
 		log.Println(err)
 	}
