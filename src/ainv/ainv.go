@@ -1,90 +1,96 @@
 package main
 
 import (
-	"strings"
-	"encoding/json"
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"os"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
-	
 )
 
 type Rate struct {
-	RawPerSmall string `json:"rawPerSmall"`
-	SmallPerBig string `json:"smallPerBig"`
+	RawPerSmall    string `json:"rawPerSmall"`
+	SmallPerBig    string `json:"smallPerBig"`
 	CartonQuantity string `json:"cartonQuantity"`
 }
 
 type Warehouse struct {
-	WarehouseId []string `json:"warehouseId"`
-	WarehouseLocation string `json:"warehouseLocation"`
+	WarehouseId       []string `json:"warehouseId"`
+	WarehouseLocation string   `json:"warehouseLocation"`
 }
 
 type Client struct {
-	ClientId string `json:"clientId"`
+	ClientId   string `json:"clientId"`
 	ClientName string `json:"clientName"`
 }
 
+type Customer struct {
+	CustomerId   string `json:"customerId"`
+	CustomerName string `json:"customerName"`
+}
+
 type WarehouseEntity struct {
-	WarehouseId string `json:"warehouseId"`
+	WarehouseId   string `json:"warehouseId"`
 	WarehouseName string `json:"warehouseName"`
 }
 
 type Item struct {
-	Name string `json:"name"`
+	Name        string   `json:"name"`
 	Description []string `json:"description"`
-	ItemId []string `json:"itemId"`
+	ItemId      []string `json:"itemId"`
 }
 
 type searchPayload struct {
-	Ids string
+	Ids       string
 	Locations string
 }
 
 type ItemInventory struct {
-	ItemName string `json:"itemName"`
-	ItemVariant string `json:"itemVariant"`
-	HsnCode string `json:"hsnCode"`
-	ItemQuantity string `json:"itemQuantity"`
-	UomRaw string `json:"uomRaw"`
-	SmallboxQuantity string `json:"smallboxQuantity"`
-	UomSmall string `json:"uomSmall"`
+	ItemName          string `json:"itemName"`
+	ItemVariant       string `json:"itemVariant"`
+	HsnCode           string `json:"hsnCode"`
+	ItemQuantity      string `json:"itemQuantity"`
+	UomRaw            string `json:"uomRaw"`
+	SmallboxQuantity  string `json:"smallboxQuantity"`
+	UomSmall          string `json:"uomSmall"`
 	BigcartonQuantity string `json:"bigcartonQuantity"`
-	UomBig string `json:"uomBig"`
-	WarehouseName string `json:"warehouseName"`
+	UomBig            string `json:"uomBig"`
+	WarehouseName     string `json:"warehouseName"`
 	WarehouseLocation string `json:"warehouseLocation"`
-	ClientName string `json:"clientName"`
+	ClientName        string `json:"clientName"`
 }
 
 type SalesTransaction struct {
-	TransactionId string `json:"transactionId"`
-	TrackingNumber string `json:"trackingNumber"`
-	EntryDate string `json:"entryDate"`
-	ItemId string `json:"itemId"`
-	ItemName string `json:"itemName"`
-	ItemVariant string `json:"itemVariant"`
-	WarehouseId string `json:"warehouseId"`
-	WarehouseName string `json:"warehouseName"`
-	WarehouseLocation string `json:"warehouseLocation"`
-	ClientId string `json:"clientId"`
-	ClientName string `json:"clientName"`
-	ChangeStock string `json:"changeStock"`
-	FinalStock string `json:"finalStock"`
-	TotalPcs string `json:"totalPcs"`
-	MaterialValue string `json:"materialValue"`
-	GstValue string `json:"gstValue"`
-	TotalValue string `json:"totalValue"`
-	ValuePerPiece float64 `json:"valuePerPiece"`
-	IsPaid string `json:"isPaid"`
-	PaidAmount string `json:"paidAmount"`
-	PaymentDate string `json:"paymentDate"`
+	TransactionId     string  `json:"transactionId"`
+	TrackingNumber    string  `json:"trackingNumber"`
+	EntryDate         string  `json:"entryDate"`
+	ItemId            string  `json:"itemId"`
+	ItemName          string  `json:"itemName"`
+	ItemVariant       string  `json:"itemVariant"`
+	WarehouseId       string  `json:"warehouseId"`
+	WarehouseName     string  `json:"warehouseName"`
+	WarehouseLocation string  `json:"warehouseLocation"`
+	ClientId          string  `json:"clientId"`
+	ClientName        string  `json:"clientName"`
+	CustomerId        string  `json:"customerId"`
+	CustomerName      string  `json:"customerName"`
+	ChangeStock       string  `json:"changeStock"`
+	FinalStock        string  `json:"finalStock"`
+	TotalPcs          string  `json:"totalPcs"`
+	MaterialValue     string  `json:"materialValue"`
+	GstValue          string  `json:"gstValue"`
+	TotalValue        string  `json:"totalValue"`
+	ValuePerPiece     float64 `json:"valuePerPiece"`
+	IsPaid            string  `json:"isPaid"`
+	PaidAmount        string  `json:"paidAmount"`
+	PaymentDate       string  `json:"paymentDate"`
 }
 
 var db *sql.DB
@@ -111,6 +117,7 @@ func main() {
 	ainvRouter.HandleFunc("/api/get/warehouses/", GetWarehouses).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/all/warehouses/", GetAllWarehouses).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/all/clients/", GetAllClients).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/all/customers/", GetAllCustomers).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/items/", GetItems).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/rate/", GetRate).Methods("POST")
 
@@ -118,6 +125,7 @@ func main() {
 	ainvRouter.HandleFunc("/api/put/itemmaster/", CreateItemMaster).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/transaction/", CreateTransaction).Methods("POST")
 	ainvRouter.HandleFunc("/api/put/client/", CreateClient).Methods("POST")
+	ainvRouter.HandleFunc("/api/put/customer/", CreateCustomer).Methods("POST")
 
 	ainvRouter.HandleFunc("/api/update/paidamount/", UpdatePaidAmount).Methods("POST")
 	ainvRouter.HandleFunc("/api/update/paymentdate/", UpdatePaymentDate).Methods("POST")
@@ -163,7 +171,7 @@ func GetWarehouses(w http.ResponseWriter, r *http.Request) {
 		}
 
 		singleObject := Warehouse{
-			WarehouseId: strings.Split(warehouseId, "$"),
+			WarehouseId:       strings.Split(warehouseId, "$"),
 			WarehouseLocation: warehouseLocation,
 		}
 
@@ -203,7 +211,7 @@ func GetAllWarehouses(w http.ResponseWriter, r *http.Request) {
 		}
 
 		singleObject := WarehouseEntity{
-			WarehouseId: warehouseId,
+			WarehouseId:   warehouseId,
 			WarehouseName: warehouseName,
 		}
 
@@ -243,7 +251,7 @@ func GetAllClients(w http.ResponseWriter, r *http.Request) {
 		}
 
 		singleObject := Client{
-			ClientId: clientId,
+			ClientId:   clientId,
 			ClientName: clientName,
 		}
 
@@ -259,6 +267,45 @@ func GetAllClients(w http.ResponseWriter, r *http.Request) {
 	w.Write(payloadJSON)
 }
 
+// GetAllCustomers returns all the clients with their ID
+func GetAllCustomers(w http.ResponseWriter, r *http.Request) {
+
+	var payload []Customer
+
+	getCustomerNamesQuery := `SELECT 
+		id, customerName
+		FROM customer`
+
+	allCustomers, err := db.Query(getCustomerNamesQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allCustomers.Next() {
+		var customerId string
+		var customerName string
+
+		err := allCustomers.Scan(&customerId, &customerName)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := Customer{
+			CustomerId:   customerId,
+			CustomerName: customerName,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
 
 // GetRate returns the rate for a particular item
 func GetRate(w http.ResponseWriter, r *http.Request) {
@@ -291,8 +338,8 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 		}
 
 		singleObject := Rate{
-			RawPerSmall: rawPerSmall,
-			SmallPerBig: smallPerBig,
+			RawPerSmall:    rawPerSmall,
+			SmallPerBig:    smallPerBig,
 			CartonQuantity: cartonQuantity,
 		}
 
@@ -375,9 +422,9 @@ func GetItems(w http.ResponseWriter, r *http.Request) {
 		}
 
 		singleObject := Item{
-			Name: name,
+			Name:        name,
 			Description: strings.Split(description, "$"),
-			ItemId: strings.Split(itemId, "$"),
+			ItemId:      strings.Split(itemId, "$"),
 		}
 
 		payload = append(payload, singleObject)
@@ -411,11 +458,11 @@ func CreateWarehouse(w http.ResponseWriter, r *http.Request) {
 	var result map[string]bool
 
 	if err != nil {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": false,
 		}
 	} else {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": true,
 		}
 	}
@@ -453,11 +500,11 @@ func CreateItemMaster(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Println(err)
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": false,
 		}
 	} else {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": true,
 		}
 	}
@@ -486,11 +533,44 @@ func CreateClient(w http.ResponseWriter, r *http.Request) {
 	var result map[string]bool
 
 	if err != nil {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": false,
 		}
 	} else {
-		result = map[string]bool {
+		result = map[string]bool{
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// CreateCustomer creates a new customer and returns the status
+func CreateCustomer(w http.ResponseWriter, r *http.Request) {
+
+	customerName := r.FormValue("customerName")
+
+	customerInsertQuery := fmt.Sprintf(`INSERT INTO customer
+		(customerName)
+		VALUES
+		('%s')`, customerName)
+
+	_, err := db.Query(customerInsertQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool{
+			"success": false,
+		}
+	} else {
+		result = map[string]bool{
 			"success": true,
 		}
 	}
@@ -510,13 +590,13 @@ func InventoryContentQualityCheck(direction string, currentInv string, changeInv
 	changeInvNum, _ := strconv.Atoi(changeInv)
 	finalInvNum, _ := strconv.Atoi(finalInv)
 
-	if ((currentInvNum + changeInvNum) != finalInvNum) {
+	if (currentInvNum + changeInvNum) != finalInvNum {
 		return false
 	}
-	if ((currentInvNum < finalInvNum) && (direction == "out")) {
+	if (currentInvNum < finalInvNum) && (direction == "out") {
 		return false
 	}
-	if ((currentInvNum > finalInvNum) && (direction == "in")) {
+	if (currentInvNum > finalInvNum) && (direction == "in") {
 		return false
 	}
 
@@ -534,7 +614,7 @@ func InventoryQuantityQualityCheck(quantity string, rate1 string, rate2 string, 
 	if totalPcsNum == 0 {
 		return false
 	}
-	if (quantityNum * rate1Num * rate2Num != totalPcsNum) {
+	if quantityNum*rate1Num*rate2Num != totalPcsNum {
 		return false
 	}
 
@@ -549,7 +629,7 @@ func InventoryValueQualityCheck(assdValue string, dutyValue string, gstValue str
 	gstValueNum, _ := strconv.ParseFloat(gstValue, 64)
 	totalValueNum, _ := strconv.ParseFloat(totalValue, 64)
 
-	if ((assdValueNum + dutyValueNum + gstValueNum) != totalValueNum) {
+	if (assdValueNum + dutyValueNum + gstValueNum) != totalValueNum {
 		return false
 	}
 
@@ -565,8 +645,8 @@ func DataSanityDriver(direction string, currentInv string, changeInv string, fin
 func checkCount(rows *sql.Row) (count int) {
 	rows.Scan(&count)
 
-   log.Println(count)
-   return count
+	log.Println(count)
+	return count
 }
 
 // CommitInventoryChanges commits the inventory changes to the inventory table
@@ -619,6 +699,7 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	warehouseId := r.FormValue("warehouseId")
 	comeOrGo := r.FormValue("comeOrGo")
 	clientId := r.FormValue("clientId")
+	customerId := r.FormValue("customerId")
 	bigQuantity := r.FormValue("bigQuantity")
 	currentValue := r.FormValue("currentValue")
 	changeValue := r.FormValue("changeValue")
@@ -645,7 +726,7 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 
 	qualityStatus := DataSanityDriver(comeOrGo, currentValue, changeValue, finalValue, bigQuantity, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue)
 	if !qualityStatus {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": false,
 		}
 
@@ -653,7 +734,7 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println(err)
 		}
-	
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(payloadJSON)
 
@@ -661,19 +742,19 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
-	(trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
+	(trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
 	VALUES
-	('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s', '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
+	('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s', '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
 
 	_, err := db.Query(transactionQuery)
 
 	if err != nil {
 		log.Println(err)
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": false,
 		}
 	} else {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": true,
 		}
 	}
@@ -681,7 +762,7 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		commitStatus := CommitInventoryChanges(itemId, warehouseId, clientId, comeOrGo, currentValue, changeValue, finalValue, bigQuantity, secretRate1, secretRate2, totalPcs)
 		if !commitStatus {
-			result = map[string]bool {
+			result = map[string]bool{
 				"success": false,
 			}
 		}
@@ -746,18 +827,18 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 		}
 
 		singleObject := ItemInventory{
-			ItemName: itemName,
-			ItemVariant: itemVariant,
-			HsnCode: hsnCode,
-			ItemQuantity: itemQuantity,
-			UomRaw: uomRaw,
-			SmallboxQuantity: smallboxQuantity,
-			UomSmall: uomSmall,
+			ItemName:          itemName,
+			ItemVariant:       itemVariant,
+			HsnCode:           hsnCode,
+			ItemQuantity:      itemQuantity,
+			UomRaw:            uomRaw,
+			SmallboxQuantity:  smallboxQuantity,
+			UomSmall:          uomSmall,
 			BigcartonQuantity: bigcartonQuantity,
-			UomBig: uomBig,
-			WarehouseName: warehouseName,
+			UomBig:            uomBig,
+			WarehouseName:     warehouseName,
 			WarehouseLocation: warehouseLocation,
-			ClientName: clientName,
+			ClientName:        clientName,
 		}
 
 		payload = append(payload, singleObject)
@@ -777,27 +858,38 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 
 	salesInvoiceNumber := r.FormValue("salesInvoiceNumber")
 	clientId := r.FormValue("clientId")
+	customerId := r.FormValue("customerId")
 
 	var payload []SalesTransaction
 	var searchQuery string
 
 	searchQuerySubstring := fmt.Sprintf(`SELECT
-		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.warehouseId, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.paidAmount, tr.date
-		FROM transaction tr, itemMaster im, warehouse wh, client cl
+		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.warehouseId, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.customerId, cu.customerName, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.paidAmount, tr.date
+		FROM transaction tr, itemMaster im, warehouse wh, client cl, customer cu
 		WHERE tr.itemId = im.itemId AND
 		tr.warehouseId = wh.warehouseId AND
-		tr.clientId = cl.id`)
+		tr.clientId = cl.id AND
+		tr.customerId = cu.id`)
 	trackingNumberSubstring := fmt.Sprintf("tr.trackingNumber = '%s'", salesInvoiceNumber)
 	clientIdSubstring := fmt.Sprintf("tr.clientId = '%s'", clientId)
+	customerIdSubstring := fmt.Sprintf("tr.customerId = '%s'", customerId)
 
-	if salesInvoiceNumber == "all" && clientId == "all" {
+	if salesInvoiceNumber == "all" && clientId == "all" && customerId == "all" {
 		searchQuery = fmt.Sprintf("%s", searchQuerySubstring)
-	} else if salesInvoiceNumber == "all" {
+	} else if salesInvoiceNumber == "all" && customerId == "all" {
 		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, clientIdSubstring)
-	} else if clientId == "all" {
+	} else if clientId == "all" && customerId == "all" {
 		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, trackingNumberSubstring)
-	} else {
+	} else if salesInvoiceNumber == "all" && clientId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, customerIdSubstring)
+	} else if salesInvoiceNumber == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, clientIdSubstring, customerIdSubstring)
+	} else if clientId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, customerIdSubstring)
+	} else if customerId == "all" {
 		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, clientIdSubstring)
+	} else {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, clientIdSubstring, customerIdSubstring)
 	}
 
 	allTransactions, err := db.Query(searchQuery)
@@ -817,6 +909,8 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		var warehouseLocation string
 		var clientId string
 		var clientName string
+		var customerId string
+		var customerName string
 		var changeValue string
 		var finalValue string
 		var totalPcs string
@@ -828,7 +922,7 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		var paidAmount string
 		var paymentDate string
 
-		err := allTransactions.Scan(&transactionId, &trackingNumber, &entryDate, &itemId, &itemName, &itemVariant, &warehouseId, &warehouseName, &warehouseLocation, &clientId, &clientName, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate)
+		err := allTransactions.Scan(&transactionId, &trackingNumber, &entryDate, &itemId, &itemName, &itemVariant, &warehouseId, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -838,27 +932,29 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		valuePerPiece = totalValueFloat / totalPcsFloat
 
 		singleObject := SalesTransaction{
-			TransactionId: transactionId,
-			TrackingNumber: trackingNumber,
-			EntryDate: entryDate,
-			ItemId: itemId,
-			ItemName: itemName,
-			ItemVariant: itemVariant,
-			WarehouseId: warehouseId,
-			WarehouseName: warehouseName,
+			TransactionId:     transactionId,
+			TrackingNumber:    trackingNumber,
+			EntryDate:         entryDate,
+			ItemId:            itemId,
+			ItemName:          itemName,
+			ItemVariant:       itemVariant,
+			WarehouseId:       warehouseId,
+			WarehouseName:     warehouseName,
 			WarehouseLocation: warehouseLocation,
-			ClientId: clientId,
-			ClientName: clientName,
-			ChangeStock: changeValue,
-			FinalStock: finalValue,
-			TotalPcs: totalPcs,
-			MaterialValue: materialValue,
-			GstValue: gstValue,
-			TotalValue: totalValue,
-			ValuePerPiece: valuePerPiece,
-			IsPaid: isPaid,
-			PaidAmount: paidAmount,
-			PaymentDate: paymentDate,
+			ClientId:          clientId,
+			ClientName:        clientName,
+			CustomerId:        customerId,
+			CustomerName:      customerName,
+			ChangeStock:       changeValue,
+			FinalStock:        finalValue,
+			TotalPcs:          totalPcs,
+			MaterialValue:     materialValue,
+			GstValue:          gstValue,
+			TotalValue:        totalValue,
+			ValuePerPiece:     valuePerPiece,
+			IsPaid:            isPaid,
+			PaidAmount:        paidAmount,
+			PaymentDate:       paymentDate,
 		}
 
 		payload = append(payload, singleObject)
@@ -889,11 +985,11 @@ func UpdatePaidAmount(w http.ResponseWriter, r *http.Request) {
 	var result map[string]bool
 
 	if err != nil {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": false,
 		}
 	} else {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": true,
 		}
 	}
@@ -922,11 +1018,11 @@ func UpdatePaymentDate(w http.ResponseWriter, r *http.Request) {
 	var result map[string]bool
 
 	if err != nil {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": false,
 		}
 	} else {
-		result = map[string]bool {
+		result = map[string]bool{
 			"success": true,
 		}
 	}
