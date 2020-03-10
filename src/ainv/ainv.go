@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/md5"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -133,10 +135,20 @@ func main() {
 	ainvRouter.HandleFunc("/api/search/items/", SearchItems).Methods("POST")
 	ainvRouter.HandleFunc("/api/search/sales/", SearchSales).Methods("POST")
 
+	ainvRouter.HandleFunc("/api/register/", RegisterUser).Methods("POST")
+	ainvRouter.HandleFunc("/api/login/", LoginUser).Methods("POST")
+
 	http.Handle("/", router)
 
 	log.Println("Server started on port 1234")
 	log.Fatal(http.ListenAndServe(":1234", nil))
+}
+
+// GetMD5Hash returns the MD5-hashed representation of a string
+func GetMD5Hash(text string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 // GetRoot returns OK if server is alive
@@ -1024,6 +1036,95 @@ func UpdatePaymentDate(w http.ResponseWriter, r *http.Request) {
 	} else {
 		result = map[string]bool{
 			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// RegisterUser creates a new user and returns the status
+func RegisterUser(w http.ResponseWriter, r *http.Request) {
+
+	username := r.FormValue("username")
+	passwordPlainText := r.FormValue("password")
+
+	password := GetMD5Hash(passwordPlainText)
+
+	userInsertQuery := fmt.Sprintf(`INSERT INTO user (username, password)
+		SELECT '%s', '%s'
+		WHERE NOT EXISTS (SELECT username FROM user WHERE username ='%s') LIMIT 1`, username, password, username)
+
+	_, err := db.Query(userInsertQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool{
+			"success": false,
+		}
+	} else {
+		result = map[string]bool{
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// LoginUser creates a new user and returns the status
+func LoginUser(w http.ResponseWriter, r *http.Request) {
+
+	username := r.FormValue("username")
+	passwordPlainText := r.FormValue("password")
+
+	password := GetMD5Hash(passwordPlainText)
+
+	userLoginQuery := fmt.Sprintf(`SELECT id, permission_createNew, permission_transactionIn, permission_transactionOut, permission_view FROM user WHERE username='%s' AND password='%s'`, username, password)
+	rows, err := db.Query(userLoginQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool{
+			"success": false,
+		}
+	} else {
+		var userId int
+		var success bool
+		var permission_createNew bool
+		var permission_transactionIn bool
+		var permission_transactionOut bool
+		var permission_view bool
+
+		for rows.Next() {
+			success = true
+			rows.Scan(&userId, &permission_createNew, &permission_transactionIn, &permission_transactionOut, &permission_view)
+		}
+
+		if success {
+			result = map[string]bool{
+				"success":                   success,
+				"permission_createNew":      permission_createNew,
+				"permission_transactionIn":  permission_transactionIn,
+				"permission_transactionOut": permission_transactionOut,
+				"permission_view":           permission_view,
+			}
+		} else {
+			result = map[string]bool{
+				"success": false,
+			}
 		}
 	}
 
