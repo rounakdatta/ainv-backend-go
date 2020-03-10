@@ -83,6 +83,7 @@ type SalesTransaction struct {
 	ClientName        string  `json:"clientName"`
 	CustomerId        string  `json:"customerId"`
 	CustomerName      string  `json:"customerName"`
+	ComeOrGo          string  `json:"comeOrGo"`
 	ChangeStock       string  `json:"changeStock"`
 	FinalStock        string  `json:"finalStock"`
 	TotalPcs          string  `json:"totalPcs"`
@@ -871,17 +872,30 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 	salesInvoiceNumber := r.FormValue("salesInvoiceNumber")
 	clientId := r.FormValue("clientId")
 	customerId := r.FormValue("customerId")
+	searchFilter := r.FormValue("filter")
 
 	var payload []SalesTransaction
 	var searchQuery string
 
+	var filterSubstring string
+	if searchFilter == "in" {
+		filterSubstring = " AND tr.comeOrGo = 'in'"
+	} else if searchFilter == "out" {
+		filterSubstring = " AND tr.comeOrGo = 'out'"
+	} else {
+		filterSubstring = ""
+	}
+
 	searchQuerySubstring := fmt.Sprintf(`SELECT
-		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.warehouseId, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.customerId, cu.customerName, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.paidAmount, tr.date
+		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.warehouseId, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.customerId, cu.customerName, tr.comeOrGo, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.paidAmount, tr.date
 		FROM transaction tr, itemMaster im, warehouse wh, client cl, customer cu
 		WHERE tr.itemId = im.itemId AND
 		tr.warehouseId = wh.warehouseId AND
 		tr.clientId = cl.id AND
 		tr.customerId = cu.id`)
+
+	searchQuerySubstring = searchQuerySubstring + filterSubstring
+
 	trackingNumberSubstring := fmt.Sprintf("tr.trackingNumber = '%s'", salesInvoiceNumber)
 	clientIdSubstring := fmt.Sprintf("tr.clientId = '%s'", clientId)
 	customerIdSubstring := fmt.Sprintf("tr.customerId = '%s'", customerId)
@@ -923,6 +937,7 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		var clientName string
 		var customerId string
 		var customerName string
+		var comeOrGo string
 		var changeValue string
 		var finalValue string
 		var totalPcs string
@@ -934,7 +949,7 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		var paidAmount string
 		var paymentDate string
 
-		err := allTransactions.Scan(&transactionId, &trackingNumber, &entryDate, &itemId, &itemName, &itemVariant, &warehouseId, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate)
+		err := allTransactions.Scan(&transactionId, &trackingNumber, &entryDate, &itemId, &itemName, &itemVariant, &warehouseId, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &comeOrGo, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -957,6 +972,7 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 			ClientName:        clientName,
 			CustomerId:        customerId,
 			CustomerName:      customerName,
+			ComeOrGo:          comeOrGo,
 			ChangeStock:       changeValue,
 			FinalStock:        finalValue,
 			TotalPcs:          totalPcs,
