@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -641,6 +642,11 @@ func InventoryValueQualityCheck(assdValue string, dutyValue string, gstValue str
 	dutyValueNum, _ := strconv.ParseFloat(dutyValue, 64)
 	gstValueNum, _ := strconv.ParseFloat(gstValue, 64)
 	totalValueNum, _ := strconv.ParseFloat(totalValue, 64)
+
+	assdValueNum = math.Floor(assdValueNum*100) / 100
+	dutyValueNum = math.Floor(dutyValueNum*100) / 100
+	gstValueNum = math.Floor(gstValueNum*100) / 100
+	totalValueNum = math.Floor(totalValueNum*100) / 100
 
 	if (assdValueNum + dutyValueNum + gstValueNum) != totalValueNum {
 		return false
