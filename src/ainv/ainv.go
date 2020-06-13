@@ -661,7 +661,7 @@ func InventoryValueQualityCheck(assdValue string, dutyValue string, gstValue str
 
 // DataSanityDriver is a driver function to trigger checks for inventoryContent, inventoryQuantity, inventoryValue
 func DataSanityDriver(direction string, currentInv string, changeInv string, finalInv string, quantity string, rate1 string, rate2 string, totalPcs string, assdValue string, dutyValue string, gstValue string, totalValue string) bool {
-	return InventoryContentQualityCheck(direction, currentInv, changeInv, finalInv) && InventoryQuantityQualityCheck(quantity, rate1, rate2, totalPcs) && InventoryValueQualityCheck(assdValue, dutyValue, gstValue, totalValue)
+	return InventoryContentQualityCheck(direction, currentInv, changeInv, finalInv) && InventoryQuantityQualityCheck(quantity, rate1, rate2, totalPcs)
 }
 
 func checkCount(rows *sql.Row) (count int) {
