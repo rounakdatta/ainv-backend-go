@@ -806,12 +806,15 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 
 	requestedItemIdRaw := r.FormValue("itemId")
 	requestedLocationsRaw := r.FormValue("locations")
+	requestedClientsRaw := r.FormValue("clients")
 
 	requestedItemId := strings.Split(strings.TrimSpace(requestedItemIdRaw), " ")
 	requestedLocations := strings.Split(strings.TrimSpace(requestedLocationsRaw), " ")
+	requestedClients := strings.Split(strings.TrimSpace(requestedClientsRaw), " ")
 
 	items := strings.Join(requestedItemId, ", ")
 	locations := strings.Join(requestedLocations, ", ")
+	clients := strings.Join(requestedClients, ", ")
 
 	var payload []ItemInventory
 
@@ -819,10 +822,11 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 		itm.itemName, itm.itemVariant, itm.hsnCode, inv.itemQuantity, itm.uomRaw, inv.smallboxQuantity, itm.uomSmall, inv.bigcartonQuantity, itm.uomBig, wh.warehouseName, wh.warehouseLocation, cl.clientName
 		FROM inventoryContents inv, itemMaster itm, warehouse wh, client cl
 		WHERE inv.itemId IN (%s) AND
+		inv.clientId IN (%s) AND
 		inv.itemId = itm.itemId AND
 		inv.warehouseId = wh.warehouseId AND
 		inv.clientId = cl.id AND
-		wh.warehouseId IN (%s)`, items, locations)
+		wh.warehouseId IN (%s)`, items, clients, locations)
 
 	allContents, err := db.Query(searchQuery)
 	if err != nil {
