@@ -114,7 +114,7 @@ func main() {
 
 	// create the router and define the APIs
 	router := mux.NewRouter()
-	ainvRouter := router.PathPrefix("/ainv").Subrouter()
+	ainvRouter := router.PathPrefix("/ainv-dev").Subrouter()
 
 	ainvRouter.HandleFunc("/", GetRoot).Methods("GET")
 
@@ -142,8 +142,8 @@ func main() {
 
 	http.Handle("/", router)
 
-	log.Println("Server started on port 1234")
-	log.Fatal(http.ListenAndServe(":1234", nil))
+	log.Println("Server started on port 1235")
+	log.Fatal(http.ListenAndServe(":1235", nil))
 }
 
 // GetMD5Hash returns the MD5-hashed representation of a string
