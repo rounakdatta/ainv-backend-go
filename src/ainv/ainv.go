@@ -44,6 +44,11 @@ type WarehouseEntity struct {
 	WarehouseName string `json:"warehouseName"`
 }
 
+type BillOfEntry struct {
+	BillOfEntryNumber string `json:"billOfEntryNumber"`
+	BillOfEntryId string `json:"billOfEntryId"`
+}
+
 type Item struct {
 	Name        string   `json:"name"`
 	Description []string `json:"description"`
@@ -141,6 +146,7 @@ func main() {
 	ainvRouter.HandleFunc("/api/get/all/clients/", GetAllClients).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/all/customers/", GetAllCustomers).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/items/", GetItems).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/all/bills/", GetAllBills).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/rate/", GetRate).Methods("POST")
 
 	ainvRouter.HandleFunc("/api/put/warehouse/", CreateWarehouse).Methods("POST")
@@ -326,6 +332,46 @@ func GetAllCustomers(w http.ResponseWriter, r *http.Request) {
 		singleObject := Customer{
 			CustomerId:   customerId,
 			CustomerName: customerName,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// GetAllBills returns all the Bill of Entry numbers with their IDs
+func GetAllBills(w http.ResponseWriter, r *http.Request) {
+
+	var payload []BillOfEntry
+
+	getBillsQuery := `SELECT 
+		id, tracker
+		FROM billOfEntry`
+
+	allBills, err := db.Query(getBillsQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allBills.Next() {
+		var billId string
+		var billNumber string
+
+		err := allBills.Scan(&billId, &billNumber)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := BillOfEntry{
+			BillOfEntryId:   billId,
+			BillOfEntryNumber: billNumber,
 		}
 
 		payload = append(payload, singleObject)
