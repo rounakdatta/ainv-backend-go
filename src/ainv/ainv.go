@@ -185,7 +185,7 @@ func GetWarehouses(w http.ResponseWriter, r *http.Request) {
 
 	getWhNamesQuery := `SELECT 
 		warehouseLocation,
-		GROUP_CONCAT(warehouseId SEPARATOR '$') warehouseId
+		GROUP_CONCAT(id SEPARATOR '$') warehouseId
 		FROM warehouse
 		GROUP BY warehouseLocation`
 
@@ -226,7 +226,7 @@ func GetAllWarehouses(w http.ResponseWriter, r *http.Request) {
 	var payload []WarehouseEntity
 
 	getWhNamesQuery := `SELECT 
-		warehouseId, CONCAT(warehouseName, ", ", warehouseLocation) AS warehouseName
+		id as warehouseId, CONCAT(warehouseName, ", ", warehouseLocation) AS warehouseName
 		FROM warehouse`
 
 	allWh, err := db.Query(getWhNamesQuery)
@@ -351,8 +351,8 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 	getRatesQuery := fmt.Sprintf(`SELECT im.rawPerSmall, im.smallPerBig, IFNULL(ic.bigcartonQuantity, 0) AS cartonQuantity
 		FROM itemMaster im
 		LEFT JOIN inventoryContents ic
-		ON (im.itemId = ic.itemId AND ic.warehouseId = '%s' AND ic.clientId = '%s')
-		WHERE im.itemId = '%s'`, requestedWarehouseId, requestedClientId, requestedItemId)
+		ON (im.id = ic.itemId AND ic.warehouseId = '%s' AND ic.clientId = '%s')
+		WHERE im.id = '%s'`, requestedWarehouseId, requestedClientId, requestedItemId)
 
 	log.Println(getRatesQuery)
 	rateDetails, err := db.Query(getRatesQuery)
@@ -433,7 +433,7 @@ func GetItems(w http.ResponseWriter, r *http.Request) {
 	getItemDetailsQuery := `SELECT
 		itemName,
 		GROUP_CONCAT(itemVariant SEPARATOR '$') itemVariant,
-		GROUP_CONCAT(itemId SEPARATOR '$') itemId
+		GROUP_CONCAT(id SEPARATOR '$') itemId
 	FROM
 		itemMaster
 	GROUP BY
@@ -707,7 +707,7 @@ func CommitInventoryChanges(itemId string, warehouseId string, clientId string, 
 
 	updateQuery := fmt.Sprintf(`UPDATE inventoryContents
 		SET bigcartonQuantity = bigcartonQuantity + %d, smallboxQuantity = smallboxQuantity + %d, itemQuantity = itemQuantity + %d
-		WHERE itemId = '%s' AND warehouseId = '%s' AND clientId = '%s' AND bigcartonQuantity = '%s'`, bigQuantityNum, smallboxQuantityNum, itemQuantityNum, itemId, warehouseId, clientId, currentValue)
+		WHERE id = '%s' AND warehouseId = '%s' AND clientId = '%s' AND bigcartonQuantity = '%s'`, bigQuantityNum, smallboxQuantityNum, itemQuantityNum, itemId, warehouseId, clientId, currentValue)
 
 	insertQuery := fmt.Sprintf(`INSERT INTO inventoryContents
 		(itemId, itemQuantity, smallboxQuantity, bigcartonQuantity, warehouseId, clientId)
@@ -842,10 +842,10 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 		FROM inventoryContents inv, itemMaster itm, warehouse wh, client cl
 		WHERE inv.itemId IN (%s) AND
 		inv.clientId IN (%s) AND
-		inv.itemId = itm.itemId AND
-		inv.warehouseId = wh.warehouseId AND
+		inv.itemId = itm.id AND
+		inv.warehouseId = wh.id AND
 		inv.clientId = cl.id AND
-		wh.warehouseId IN (%s)`, items, clients, locations)
+		wh.id IN (%s)`, items, clients, locations)
 
 	allContents, err := db.Query(searchQuery)
 	if err != nil {
@@ -919,10 +919,10 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 	}
 
 	searchQuerySubstring := fmt.Sprintf(`SELECT
-		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.warehouseId, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.customerId, cu.customerName, tr.comeOrGo, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.paidAmount, tr.date
+		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.id, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.customerId, cu.customerName, tr.comeOrGo, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.paidAmount, tr.date
 		FROM transaction tr, itemMaster im, warehouse wh, client cl, customer cu
-		WHERE tr.itemId = im.itemId AND
-		tr.warehouseId = wh.warehouseId AND
+		WHERE tr.itemId = im.id AND
+		tr.warehouseId = wh.id AND
 		tr.clientId = cl.id AND
 		tr.customerId = cu.id`)
 
@@ -1042,9 +1042,9 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 
 	var filterSubstring string
 	if searchFilter == "in" {
-		filterSubstring = " AND tr.comeOrGo = 'in'"
+		filterSubstring = " AND temp.direction = 'in'"
 	} else if searchFilter == "out" {
-		filterSubstring = " AND tr.comeOrGo = 'out'"
+		filterSubstring = " AND temp.direction = 'out'"
 	} else {
 		filterSubstring = ""
 	}
@@ -1058,8 +1058,10 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		direction, 
 		entryDate, 
 		item, 
-		warehouse, 
+		warehouse,
+        clientId,
 		client, 
+        customerId,
 		customer, 
 		bigQuantity, 
 		totalValue, 
@@ -1135,6 +1137,7 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 				warehouse.id = warehouseId
 			) SEPARATOR ' '
 			) AS warehouse, 
+			min(clientId) as clientId,
 			Group_concat(
 			DISTINCT (
 				SELECT 
@@ -1145,6 +1148,7 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 				client.id = clientId
 			) SEPARATOR ' '
 			) AS client, 
+			min(customerId) as customerId,
 			Group_concat(
 			DISTINCT (
 				SELECT 
@@ -1165,14 +1169,14 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		GROUP BY 
 			billOfEntry, 
 			salesInvoice
-		) temp   
+		) temp WHERE 1=1
 	`)
 
 	searchQuerySubstring = searchQuerySubstring + filterSubstring
 
-	trackingNumberSubstring := fmt.Sprintf("tr.trackingNumber = '%s'", salesInvoiceNumber)
-	clientIdSubstring := fmt.Sprintf("tr.clientId = '%s'", clientId)
-	customerIdSubstring := fmt.Sprintf("tr.customerId = '%s'", customerId)
+	trackingNumberSubstring := fmt.Sprintf("(temp.billOfEntry = '%s' OR temp.salesInvoice = '%s')", salesInvoiceNumber, salesInvoiceNumber)
+	clientIdSubstring := fmt.Sprintf("temp.clientId = '%s'", clientId)
+	customerIdSubstring := fmt.Sprintf("temp.customerId = '%s'", customerId)
 
 	if salesInvoiceNumber == "all" && clientId == "all" && customerId == "all" {
 		searchQuery = fmt.Sprintf("%s", searchQuerySubstring)
@@ -1206,7 +1210,9 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		var entryDate string
 		var item string
 		var warehouse string
+		var clientId string
 		var client string
+		var customerId string
 		var customer string
 		var bigQuantity string
 		var totalValue string
@@ -1214,7 +1220,7 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		var paidAmount string
 		var date string
 
-		err := allTransactions.Scan(&billOfEntryId, &billOfEntry, &salesInvoiceId, &salesInvoice, &direction, &entryDate, &item, &warehouse, &client, &customer, &bigQuantity, &totalValue, &isPaid, &paidAmount, &date)
+		err := allTransactions.Scan(&billOfEntryId, &billOfEntry, &salesInvoiceId, &salesInvoice, &direction, &entryDate, &item, &warehouse, &clientId, &client, &customerId, &customer, &bigQuantity, &totalValue, &isPaid, &paidAmount, &date)
 		if err != nil {
 			panic(err.Error())
 		}
