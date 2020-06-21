@@ -97,6 +97,24 @@ type SalesTransaction struct {
 	PaymentDate       string  `json:"paymentDate"`
 }
 
+type OverviewTransaction struct {
+	BillOfEntryId  string `json:"billOfEntryId"`
+	BillOfEntry    string `json:"billOfEntry"`
+	SalesInvoiceId string `json:"salesInvoiceId"`
+	SalesInvoice   string `json:"salesInvoice"`
+	Direction      string `json:"direction"`
+	EntryDate      string `json:"entryDate"`
+	Item           string `json:"item"`
+	Warehouse      string `json:"warehouse"`
+	Client         string `json:"client"`
+	Customer       string `json:"customer"`
+	BigQuantity    string `json:"bigQuantity"`
+	TotalValue     string `json:"totalValue"`
+	IsPaid         string `json:"isPaid"`
+	PaidAmount     string `json:"paidAmount"`
+	Date           string `json:"date"`
+}
+
 var db *sql.DB
 
 func main() {
@@ -136,6 +154,7 @@ func main() {
 
 	ainvRouter.HandleFunc("/api/search/items/", SearchItems).Methods("POST")
 	ainvRouter.HandleFunc("/api/search/sales/", SearchSales).Methods("POST")
+	ainvRouter.HandleFunc("/api/search/overview/", SearchOverview).Methods("POST")
 
 	ainvRouter.HandleFunc("/api/register/", RegisterUser).Methods("POST")
 	ainvRouter.HandleFunc("/api/login/", LoginUser).Methods("POST")
@@ -996,6 +1015,226 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 			IsPaid:            isPaid,
 			PaidAmount:        paidAmount,
 			PaymentDate:       paymentDate,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// SearchOverview searches overview of transactions by filters
+func SearchOverview(w http.ResponseWriter, r *http.Request) {
+
+	salesInvoiceNumber := r.FormValue("salesInvoiceNumber")
+	clientId := r.FormValue("clientId")
+	customerId := r.FormValue("customerId")
+	searchFilter := r.FormValue("filter")
+
+	var payload []OverviewTransaction
+	var searchQuery string
+
+	var filterSubstring string
+	if searchFilter == "in" {
+		filterSubstring = " AND tr.comeOrGo = 'in'"
+	} else if searchFilter == "out" {
+		filterSubstring = " AND tr.comeOrGo = 'out'"
+	} else {
+		filterSubstring = ""
+	}
+
+	searchQuerySubstring := fmt.Sprintf(`
+	SELECT 
+		IFNULL(billOfEntryId, 'N/A'), 
+		IFNULL(billOfEntry, 'N/A'), 
+		IFNULL(salesInvoiceId, 'N/A'), 
+		IFNULL(salesInvoice, 'N/A'), 
+		direction, 
+		entryDate, 
+		item, 
+		warehouse, 
+		client, 
+		customer, 
+		bigQuantity, 
+		totalValue, 
+		isPaid, 
+		paidAmount, 
+		date 
+	from 
+		(
+		SELECT 
+			billOfEntry as billOfEntryId, 
+			(
+			SELECT 
+				tracker 
+			FROM 
+				billOfEntry 
+			WHERE 
+				billOfEntry.id = billOfEntry
+			) AS billOfEntry, 
+			salesInvoice as salesInvoiceId, 
+			(
+			SELECT 
+				tracker 
+			FROM 
+				salesInvoice 
+			WHERE 
+				salesInvoice.id = salesInvoice
+			) AS salesInvoice, 
+			min(comeOrGo) as direction, 
+			(
+			select 
+				case when min(comeOrGo) like 'in' then GROUP_CONCAT(combo.bee) else GROUP_CONCAT(combo.sie) end 
+			from 
+				(
+				select 
+					id as be, 
+					NULL as si, 
+					entryDate as bee, 
+					NULL as sie 
+				from 
+					billOfEntry 
+				union all 
+				select 
+					NULL as be, 
+					id as si, 
+					NULL as bee, 
+					entryDate as sie 
+				from 
+					salesInvoice
+				) combo 
+			where 
+				billOfEntryId = combo.be 
+				or salesInvoice = combo.si
+			) as entryDate, 
+			Group_concat(
+			DISTINCT (
+				SELECT 
+				itemName 
+				FROM 
+				itemMaster 
+				WHERE 
+				itemMaster.id = itemId
+			) SEPARATOR ' '
+			) AS item, 
+			Group_concat(
+			DISTINCT (
+				SELECT 
+				Concat(
+					warehouseName, ', ', warehouseLocation
+				) 
+				FROM 
+				warehouse 
+				WHERE 
+				warehouse.id = warehouseId
+			) SEPARATOR ' '
+			) AS warehouse, 
+			Group_concat(
+			DISTINCT (
+				SELECT 
+				clientName 
+				FROM 
+				client 
+				WHERE 
+				client.id = clientId
+			) SEPARATOR ' '
+			) AS client, 
+			Group_concat(
+			DISTINCT (
+				SELECT 
+				customerName 
+				FROM 
+				customer 
+				WHERE 
+				customer.id = customerId
+			) SEPARATOR ' '
+			) AS customer, 
+			Sum(bigQuantity) AS bigQuantity, 
+			Sum(totalValue) AS totalValue, 
+			'...' AS isPaid, 
+			Sum(paidAmount) AS paidAmount, 
+			'...' AS date 
+		FROM 
+			transaction 
+		GROUP BY 
+			billOfEntry, 
+			salesInvoice
+		) temp   
+	`)
+
+	searchQuerySubstring = searchQuerySubstring + filterSubstring
+
+	trackingNumberSubstring := fmt.Sprintf("tr.trackingNumber = '%s'", salesInvoiceNumber)
+	clientIdSubstring := fmt.Sprintf("tr.clientId = '%s'", clientId)
+	customerIdSubstring := fmt.Sprintf("tr.customerId = '%s'", customerId)
+
+	if salesInvoiceNumber == "all" && clientId == "all" && customerId == "all" {
+		searchQuery = fmt.Sprintf("%s", searchQuerySubstring)
+	} else if salesInvoiceNumber == "all" && customerId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, clientIdSubstring)
+	} else if clientId == "all" && customerId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, trackingNumberSubstring)
+	} else if salesInvoiceNumber == "all" && clientId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, customerIdSubstring)
+	} else if salesInvoiceNumber == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, clientIdSubstring, customerIdSubstring)
+	} else if clientId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, customerIdSubstring)
+	} else if customerId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, clientIdSubstring)
+	} else {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, clientIdSubstring, customerIdSubstring)
+	}
+
+	allTransactions, err := db.Query(searchQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allTransactions.Next() {
+		var billOfEntryId string
+		var billOfEntry string
+		var salesInvoiceId string
+		var salesInvoice string
+		var direction string
+		var entryDate string
+		var item string
+		var warehouse string
+		var client string
+		var customer string
+		var bigQuantity string
+		var totalValue string
+		var isPaid string
+		var paidAmount string
+		var date string
+
+		err := allTransactions.Scan(&billOfEntryId, &billOfEntry, &salesInvoiceId, &salesInvoice, &direction, &entryDate, &item, &warehouse, &client, &customer, &bigQuantity, &totalValue, &isPaid, &paidAmount, &date)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := OverviewTransaction{
+			BillOfEntryId: billOfEntryId,
+			BillOfEntry: billOfEntry,
+			SalesInvoiceId: salesInvoiceId,
+			SalesInvoice: salesInvoice,
+			Direction: direction,
+			EntryDate: entryDate,
+			Item: item,
+			Warehouse: warehouse,
+			Client: client,
+			Customer: customer,
+			BigQuantity: bigQuantity,
+			TotalValue: totalValue,
+			IsPaid: isPaid,
+			PaidAmount: paidAmount,
+			Date: date,
 		}
 
 		payload = append(payload, singleObject)
