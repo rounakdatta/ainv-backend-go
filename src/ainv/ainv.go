@@ -49,6 +49,12 @@ type BillOfEntry struct {
 	BillOfEntryId string `json:"billOfEntryId"`
 }
 
+type SalesInvoice struct {
+	SalesInvoiceNumber string `json:"salesInvoiceNumber"`
+	SalesInvoiceId string `json:"salesInvoiceId"`
+	SalesInvoiceDate string `json:"salesInvoiceDate"`
+}
+
 type Item struct {
 	Name        string   `json:"name"`
 	Description []string `json:"description"`
@@ -147,6 +153,7 @@ func main() {
 	ainvRouter.HandleFunc("/api/get/all/customers/", GetAllCustomers).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/items/", GetItems).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/all/bills/", GetAllBills).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/all/invoices/", GetAllInvoices).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/rate/", GetRate).Methods("POST")
 
 	ainvRouter.HandleFunc("/api/put/warehouse/", CreateWarehouse).Methods("POST")
@@ -372,6 +379,48 @@ func GetAllBills(w http.ResponseWriter, r *http.Request) {
 		singleObject := BillOfEntry{
 			BillOfEntryId:   billId,
 			BillOfEntryNumber: billNumber,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// GetAllInvoices returns all the Sales Invoice numbers with their IDs
+func GetAllInvoices(w http.ResponseWriter, r *http.Request) {
+
+	var payload []SalesInvoice
+
+	getInvoicesQuery := `SELECT 
+		id, tracker, entryDate
+		FROM salesInvoice`
+
+	allInvoices, err := db.Query(getInvoicesQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allInvoices.Next() {
+		var invId string
+		var invNumber string
+		var invDate string
+
+		err := allInvoices.Scan(&invId, &invNumber, &invDate)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := SalesInvoice{
+			SalesInvoiceId:   invId,
+			SalesInvoiceNumber: invNumber,
+			SalesInvoiceDate: invDate,
 		}
 
 		payload = append(payload, singleObject)
@@ -753,7 +802,7 @@ func CommitInventoryChanges(itemId string, warehouseId string, clientId string, 
 
 	updateQuery := fmt.Sprintf(`UPDATE inventoryContents
 		SET bigcartonQuantity = bigcartonQuantity + %d, smallboxQuantity = smallboxQuantity + %d, itemQuantity = itemQuantity + %d
-		WHERE id = '%s' AND warehouseId = '%s' AND clientId = '%s' AND bigcartonQuantity = '%s'`, bigQuantityNum, smallboxQuantityNum, itemQuantityNum, itemId, warehouseId, clientId, currentValue)
+		WHERE itemId = '%s' AND warehouseId = '%s' AND clientId = '%s' AND bigcartonQuantity = '%s'`, bigQuantityNum, smallboxQuantityNum, itemQuantityNum, itemId, warehouseId, clientId, currentValue)
 
 	insertQuery := fmt.Sprintf(`INSERT INTO inventoryContents
 		(itemId, itemQuantity, smallboxQuantity, bigcartonQuantity, warehouseId, clientId)
@@ -780,6 +829,8 @@ func CommitInventoryChanges(itemId string, warehouseId string, clientId string, 
 // CreateTransaction creates a transaction
 func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 
+	oldOrNew := r.FormValue("oldOrNew")
+	billRef := r.FormValue("billRef")
 	trackingNumber := r.FormValue("trackingNumber")
 	entryDate := r.FormValue("entryDate")
 	itemId := r.FormValue("itemId")
@@ -828,11 +879,72 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
-	(trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
-	VALUES
-	('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s', '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
+	if comeOrGo == "in" {
+		billRef = trackingNumber
+		trackingNumber = "NULL"
 
+		beEntryQuery := fmt.Sprintf(`
+			INSERT INTO billOfEntry (tracker, entryDate) VALUES ('%s', '%s')
+		`, billRef, entryDate)
+		_, err := db.Query(beEntryQuery)
+
+		if err != nil {
+			log.Println(err)
+			result = map[string]bool{
+				"success": false,
+			}
+		} else {
+			result = map[string]bool{
+				"success": true,
+			}
+		}
+
+		beIdSelectQuery := fmt.Sprintf(`
+			SELECT id FROM billOfEntry WHERE tracker='%s'
+		`, billRef)
+
+		beData := db.QueryRow(beIdSelectQuery)
+		beData.Scan(&billRef)
+
+		billRef = fmt.Sprintf("'%s'", billRef)
+
+	} else {
+		if oldOrNew == "New!" {
+			siEntryQuery := fmt.Sprintf(`
+				INSERT INTO salesInvoice (tracker, entryDate) VALUES ('%s', '%s')
+			`, trackingNumber, entryDate)
+			_, err := db.Query(siEntryQuery)
+
+			if err != nil {
+				log.Println(err)
+				result = map[string]bool{
+					"success": false,
+				}
+			} else {
+				result = map[string]bool{
+					"success": true,
+				}
+			}
+
+			siSelectQuery := fmt.Sprintf(`
+				SELECT id FROM salesInvoice WHERE tracker='%s'
+			`, trackingNumber)
+
+			siData := db.QueryRow(siSelectQuery)
+			siData.Scan(&trackingNumber)
+
+			trackingNumber = fmt.Sprintf("'%s'", trackingNumber)
+		} else {
+			trackingNumber = oldOrNew
+		}
+	}
+
+	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
+	(billOfEntry, salesInvoice, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
+	VALUES
+	(%s, %s, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s', '%s')`, billRef, trackingNumber, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
+
+	fmt.Println(transactionQuery)
 	_, err := db.Query(transactionQuery)
 
 	if err != nil {
