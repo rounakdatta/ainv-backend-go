@@ -47,12 +47,15 @@ type WarehouseEntity struct {
 type BillOfEntry struct {
 	BillOfEntryNumber string `json:"billOfEntryNumber"`
 	BillOfEntryId string `json:"billOfEntryId"`
+	BillOfEntryDate string `json:"billOfEntryDate"`
 }
 
 type SalesInvoice struct {
 	SalesInvoiceNumber string `json:"salesInvoiceNumber"`
 	SalesInvoiceId string `json:"salesInvoiceId"`
 	SalesInvoiceDate string `json:"salesInvoiceDate"`
+	CustomerId string `json:"customerId"`
+	CustomerName string `json:"customerName"`
 }
 
 type Item struct {
@@ -359,7 +362,7 @@ func GetAllBills(w http.ResponseWriter, r *http.Request) {
 	var payload []BillOfEntry
 
 	getBillsQuery := `SELECT 
-		id, tracker
+		id, tracker, entryDate
 		FROM billOfEntry`
 
 	allBills, err := db.Query(getBillsQuery)
@@ -370,8 +373,9 @@ func GetAllBills(w http.ResponseWriter, r *http.Request) {
 	for allBills.Next() {
 		var billId string
 		var billNumber string
+		var billDate string
 
-		err := allBills.Scan(&billId, &billNumber)
+		err := allBills.Scan(&billId, &billNumber, &billDate)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -379,6 +383,7 @@ func GetAllBills(w http.ResponseWriter, r *http.Request) {
 		singleObject := BillOfEntry{
 			BillOfEntryId:   billId,
 			BillOfEntryNumber: billNumber,
+			BillOfEntryDate: billDate,
 		}
 
 		payload = append(payload, singleObject)
@@ -399,7 +404,7 @@ func GetAllInvoices(w http.ResponseWriter, r *http.Request) {
 	var payload []SalesInvoice
 
 	getInvoicesQuery := `SELECT 
-		id, tracker, entryDate
+		id, tracker, entryDate, customerId, (select customerName from customer where id=customerId) as customerId
 		FROM salesInvoice`
 
 	allInvoices, err := db.Query(getInvoicesQuery)
@@ -411,8 +416,10 @@ func GetAllInvoices(w http.ResponseWriter, r *http.Request) {
 		var invId string
 		var invNumber string
 		var invDate string
+		var customerId string
+		var customerName string
 
-		err := allInvoices.Scan(&invId, &invNumber, &invDate)
+		err := allInvoices.Scan(&invId, &invNumber, &invDate, &customerId, &customerName)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -421,6 +428,8 @@ func GetAllInvoices(w http.ResponseWriter, r *http.Request) {
 			SalesInvoiceId:   invId,
 			SalesInvoiceNumber: invNumber,
 			SalesInvoiceDate: invDate,
+			CustomerId: customerId,
+			CustomerName: customerName,
 		}
 
 		payload = append(payload, singleObject)
