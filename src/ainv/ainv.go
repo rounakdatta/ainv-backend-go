@@ -748,7 +748,7 @@ func InventoryQuantityQualityCheck(quantity string, rate1 string, rate2 string, 
 	rate2Num, _ := strconv.Atoi(rate2)
 	totalPcsNum, _ := strconv.Atoi(totalPcs)
 
-	if totalPcsNum == 0 {
+	if totalPcsNum <= 0 {
 		return false
 	}
 	if quantityNum*rate1Num*rate2Num != totalPcsNum {
