@@ -86,12 +86,12 @@ type ItemInventory struct {
 
 type SalesTransaction struct {
 	TransactionId     string  `json:"transactionId"`
-	TrackingNumber    string  `json:"trackingNumber"`
+	BillOfEntry    string  `json:"billOfEntry"`
+	SalesInvoice    string  `json:"salesInvoice"`
 	EntryDate         string  `json:"entryDate"`
 	ItemId            string  `json:"itemId"`
 	ItemName          string  `json:"itemName"`
 	ItemVariant       string  `json:"itemVariant"`
-	WarehouseId       string  `json:"warehouseId"`
 	WarehouseName     string  `json:"warehouseName"`
 	WarehouseLocation string  `json:"warehouseLocation"`
 	ClientId          string  `json:"clientId"`
@@ -892,30 +892,34 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 		billRef = trackingNumber
 		trackingNumber = "NULL"
 
-		beEntryQuery := fmt.Sprintf(`
-			INSERT INTO billOfEntry (tracker, entryDate) VALUES ('%s', '%s')
-		`, billRef, entryDate)
-		_, err := db.Query(beEntryQuery)
+		if oldOrNew == "New!" {
 
-		if err != nil {
-			log.Println(err)
-			result = map[string]bool{
-				"success": false,
+			beEntryQuery := fmt.Sprintf(`
+				INSERT INTO billOfEntry (tracker, entryDate) VALUES ('%s', '%s')
+			`, billRef, entryDate)
+			_, err := db.Query(beEntryQuery)
+
+			if err != nil {
+				log.Println(err)
+				result = map[string]bool{
+					"success": false,
+				}
+			} else {
+				result = map[string]bool{
+					"success": true,
+				}
 			}
+
+			beIdSelectQuery := fmt.Sprintf(`
+				SELECT id FROM billOfEntry WHERE tracker='%s'
+			`, billRef)
+
+			beData := db.QueryRow(beIdSelectQuery)
+			beData.Scan(&billRef)
+
 		} else {
-			result = map[string]bool{
-				"success": true,
-			}
+			billRef = fmt.Sprintf("'%s'", billRef)
 		}
-
-		beIdSelectQuery := fmt.Sprintf(`
-			SELECT id FROM billOfEntry WHERE tracker='%s'
-		`, billRef)
-
-		beData := db.QueryRow(beIdSelectQuery)
-		beData.Scan(&billRef)
-
-		billRef = fmt.Sprintf("'%s'", billRef)
 
 	} else {
 		if oldOrNew == "New!" {
@@ -1068,7 +1072,7 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 // SearchSales searches for the sales transactions by filters
 func SearchSales(w http.ResponseWriter, r *http.Request) {
 
-	salesInvoiceNumber := r.FormValue("salesInvoiceNumber")
+	billOfEntry := r.FormValue("billOfEntry")
 	clientId := r.FormValue("clientId")
 	customerId := r.FormValue("customerId")
 	searchFilter := r.FormValue("filter")
@@ -1077,37 +1081,75 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 	var searchQuery string
 
 	var filterSubstring string
+	var billOrSales string
 	if searchFilter == "in" {
 		filterSubstring = " AND tr.comeOrGo = 'in'"
+		billOrSales = "billOfEntry"
 	} else if searchFilter == "out" {
 		filterSubstring = " AND tr.comeOrGo = 'out'"
+		billOrSales = "salesInvoice"
 	} else {
 		filterSubstring = ""
+		billOrSales = "salesInvoice"
 	}
 
-	searchQuerySubstring := fmt.Sprintf(`SELECT
-		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.id, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.customerId, cu.customerName, tr.comeOrGo, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.paidAmount, tr.date
-		FROM transaction tr, itemMaster im, warehouse wh, client cl, customer cu
-		WHERE tr.itemId = im.id AND
-		tr.warehouseId = wh.id AND
-		tr.clientId = cl.id AND
-		tr.customerId = cu.id`)
+	searchQuerySubstring := fmt.Sprintf(`
+		SELECT
+		tr.id,
+		IFNULL((select tracker from billOfEntry where id=tr.billOfEntry), 'N/A') as billOfEntry,
+		IFNULL((select tracker from salesInvoice where id=tr.salesInvoice), 'N/A') as salesInvoice,
+	IFNULL((
+	SELECT
+		entryDate
+	FROM
+		%s
+	WHERE
+		id = tr.%s
+	), 'N/A') AS entryDate,
+	tr.itemId,
+	im.itemName,
+	im.itemVariant,
+	wh.warehouseName,
+	wh.warehouseLocation,
+	tr.clientId,
+	cl.clientName,
+	tr.customerId,
+	cu.customerName,
+	tr.comeOrGo,
+	tr.changeValue,
+	tr.finalValue,
+	tr.totalPcs,
+	tr.dutyValue,
+	tr.gstValue,
+	tr.totalValue,
+	tr.isPaid,
+	tr.paidAmount,
+	tr.date
+	FROM transaction
+		tr,
+		itemMaster im,
+		warehouse wh,
+		client cl,
+		customer cu
+	WHERE
+		tr.itemId = im.id AND tr.warehouseId = wh.id AND tr.clientId = cl.id AND tr.customerId = cu.id
+	`, billOrSales, billOrSales)
 
 	searchQuerySubstring = searchQuerySubstring + filterSubstring
 
-	trackingNumberSubstring := fmt.Sprintf("tr.trackingNumber = '%s'", salesInvoiceNumber)
+	trackingNumberSubstring := fmt.Sprintf("tr.billOfEntry = '%s'", billOfEntry)
 	clientIdSubstring := fmt.Sprintf("tr.clientId = '%s'", clientId)
 	customerIdSubstring := fmt.Sprintf("tr.customerId = '%s'", customerId)
 
-	if salesInvoiceNumber == "all" && clientId == "all" && customerId == "all" {
+	if billOfEntry == "all" && clientId == "all" && customerId == "all" {
 		searchQuery = fmt.Sprintf("%s", searchQuerySubstring)
-	} else if salesInvoiceNumber == "all" && customerId == "all" {
+	} else if billOfEntry == "all" && customerId == "all" {
 		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, clientIdSubstring)
 	} else if clientId == "all" && customerId == "all" {
 		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, trackingNumberSubstring)
-	} else if salesInvoiceNumber == "all" && clientId == "all" {
+	} else if billOfEntry == "all" && clientId == "all" {
 		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, customerIdSubstring)
-	} else if salesInvoiceNumber == "all" {
+	} else if billOfEntry == "all" {
 		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, clientIdSubstring, customerIdSubstring)
 	} else if clientId == "all" {
 		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, customerIdSubstring)
@@ -1124,12 +1166,12 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 
 	for allTransactions.Next() {
 		var transactionId string
-		var trackingNumber string
+		var billOfEntry string
+		var salesInvoice string
 		var entryDate string
 		var itemId string
 		var itemName string
 		var itemVariant string
-		var warehouseId string
 		var warehouseName string
 		var warehouseLocation string
 		var clientId string
@@ -1148,7 +1190,7 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		var paidAmount string
 		var paymentDate string
 
-		err := allTransactions.Scan(&transactionId, &trackingNumber, &entryDate, &itemId, &itemName, &itemVariant, &warehouseId, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &comeOrGo, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate)
+		err := allTransactions.Scan(&transactionId, &billOfEntry, &salesInvoice, &entryDate, &itemId, &itemName, &itemVariant, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &comeOrGo, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -1159,12 +1201,12 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 
 		singleObject := SalesTransaction{
 			TransactionId:     transactionId,
-			TrackingNumber:    trackingNumber,
+			BillOfEntry:    billOfEntry,
+			SalesInvoice:    salesInvoice,
 			EntryDate:         entryDate,
 			ItemId:            itemId,
 			ItemName:          itemName,
 			ItemVariant:       itemVariant,
-			WarehouseId:       warehouseId,
 			WarehouseName:     warehouseName,
 			WarehouseLocation: warehouseLocation,
 			ClientId:          clientId,
@@ -1216,25 +1258,25 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		filterSubstring = ""
 	}
 
-	searchQuerySubstring := fmt.Sprintf(`
-	SELECT 
-		IFNULL(billOfEntryId, 'N/A'), 
-		IFNULL(billOfEntry, 'N/A'), 
-		IFNULL(salesInvoiceId, 'N/A'), 
-		IFNULL(salesInvoice, 'N/A'), 
+	searchQuerySubstring := fmt.Sprintf(`SELECT * FROM
+	(SELECT 
+		GROUP_CONCAT(DISTINCT(IFNULL(billOfEntryId, 'N/A'))) as billOfEntryId, 
+		IFNULL(billOfEntry, 'N/A') as billOfEntry, 
+		GROUP_CONCAT(DISTINCT(IFNULL(salesInvoiceId, 'N/A'))) as salesInvoiceId, 
+		GROUP_CONCAT(DISTINCT(IFNULL(salesInvoice, 'N/A'))) as salesInvoice, 
 		direction, 
-		entryDate, 
-		item, 
-		warehouse,
-        clientId,
-		client, 
-        customerId,
-		customer, 
-		bigQuantity, 
-		totalValue, 
-		isPaid, 
-		paidAmount, 
-		date 
+		GROUP_CONCAT(DISTINCT(entryDate)) as entryDate, 
+		GROUP_CONCAT(DISTINCT(item)) as item, 
+		GROUP_CONCAT(DISTINCT(warehouse)) as warehouse,
+        GROUP_CONCAT(DISTINCT(clientId)) as clientId,
+		GROUP_CONCAT(DISTINCT(client)) as client, 
+        GROUP_CONCAT(DISTINCT(customerId)) as customerId,
+		GROUP_CONCAT(DISTINCT(customer)) as customer, 
+		sum(bigQuantity) as bigQuantity, 
+		sum(totalValue) as totalValue, 
+		GROUP_CONCAT(DISTINCT(isPaid)) as isPaid, 
+		sum(paidAmount) as paidAmount, 
+		GROUP_CONCAT(DISTINCT(date)) as date 
 	from 
 		(
 		SELECT 
@@ -1336,7 +1378,7 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		GROUP BY 
 			billOfEntry, 
 			salesInvoice
-		) temp WHERE 1=1
+		) agg WHERE 1=1 group by billOfEntry, direction) temp WHERE 1=1
 	`)
 
 	searchQuerySubstring = searchQuerySubstring + filterSubstring
