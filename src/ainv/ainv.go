@@ -918,6 +918,14 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 			beData.Scan(&billRef)
 
 		} else {
+
+			beIdSelectQuery := fmt.Sprintf(`
+				SELECT id FROM billOfEntry WHERE tracker='%s'
+			`, billRef)
+
+			beData := db.QueryRow(beIdSelectQuery)
+			beData.Scan(&billRef)
+
 			billRef = fmt.Sprintf("'%s'", billRef)
 		}
 
@@ -1472,7 +1480,7 @@ func UpdatePaidAmount(w http.ResponseWriter, r *http.Request) {
 
 	updateQuery := fmt.Sprintf(`UPDATE transaction
 		SET paidAmount = '%s',
-		isPaid = CASE WHEN totalValue = paidAmount THEN true ELSE false END
+		isPaid = CASE WHEN cast(totalValue as unsigned) = cast(paidAmount as unsigned) THEN true ELSE false END
 		WHERE id = '%s'`, paidAmount, transactionId)
 
 	_, err := db.Query(updateQuery)
