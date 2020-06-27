@@ -109,6 +109,9 @@ type SalesTransaction struct {
 	IsPaid            string  `json:"isPaid"`
 	PaidAmount        string  `json:"paidAmount"`
 	PaymentDate       string  `json:"paymentDate"`
+	Field1       string  `json:"field1"`
+	Field2       string  `json:"field2"`
+	Remarks       string  `json:"remarks"`
 }
 
 type OverviewTransaction struct {
@@ -863,6 +866,9 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	isPaid := r.FormValue("isPaid")
 	paidAmount := r.FormValue("paidAmount")
 	date := r.FormValue("date")
+	field1 := r.FormValue("field1")
+	field2 := r.FormValue("field2")
+	remarks := r.FormValue("remarks")
 
 	changeValue = strings.TrimSpace(changeValue)
 	if date == "Expected Date" {
@@ -961,9 +967,9 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
-	(billOfEntry, salesInvoice, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
+	(billOfEntry, salesInvoice, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date, delvDate1, delvDate2, remarks)
 	VALUES
-	(%s, %s, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s', '%s')`, billRef, trackingNumber, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
+	(%s, %s, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s', '%s', '%s', '%s', '%s')`, billRef, trackingNumber, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date, field1, field2, remarks)
 
 	fmt.Println(transactionQuery)
 	_, err := db.Query(transactionQuery)
@@ -1132,7 +1138,10 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 	tr.totalValue,
 	tr.isPaid,
 	tr.paidAmount,
-	tr.date
+	tr.date,
+	tr.delvDate1,
+	tr.delvDate2,
+	tr.remarks
 	FROM transaction
 		tr,
 		itemMaster im,
@@ -1197,8 +1206,11 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		var isPaid string
 		var paidAmount string
 		var paymentDate string
+		var field1 string
+		var field2 string
+		var remarks string
 
-		err := allTransactions.Scan(&transactionId, &billOfEntry, &salesInvoice, &entryDate, &itemId, &itemName, &itemVariant, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &comeOrGo, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate)
+		err := allTransactions.Scan(&transactionId, &billOfEntry, &salesInvoice, &entryDate, &itemId, &itemName, &itemVariant, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &comeOrGo, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate, &field1, &field2, &remarks)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -1232,6 +1244,9 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 			IsPaid:            isPaid,
 			PaidAmount:        paidAmount,
 			PaymentDate:       paymentDate,
+			Field1: field1,
+			Field2: field2,
+			Remarks: remarks,
 		}
 
 		payload = append(payload, singleObject)
