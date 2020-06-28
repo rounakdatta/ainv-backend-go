@@ -170,6 +170,9 @@ func main() {
 
 	ainvRouter.HandleFunc("/api/update/paidamount/", UpdatePaidAmount).Methods("POST")
 	ainvRouter.HandleFunc("/api/update/paymentdate/", UpdatePaymentDate).Methods("POST")
+	ainvRouter.HandleFunc("/api/update/field1/", UpdateField1).Methods("POST")
+	ainvRouter.HandleFunc("/api/update/field2/", UpdateField2).Methods("POST")
+	ainvRouter.HandleFunc("/api/update/remarks/", UpdateRemarks).Methods("POST")
 
 	ainvRouter.HandleFunc("/api/search/items/", SearchItems).Methods("POST")
 	ainvRouter.HandleFunc("/api/search/sales/", SearchSales).Methods("POST")
@@ -1401,14 +1404,12 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		GROUP BY 
 			billOfEntry, 
 			salesInvoice
-		) agg WHERE 1=1 group by billOfEntry, direction) temp WHERE 1=1
+		) agg WHERE 1=1
 	`)
 
-	searchQuerySubstring = searchQuerySubstring + filterSubstring
-
-	trackingNumberSubstring := fmt.Sprintf("(temp.billOfEntry = '%s' OR temp.salesInvoice = '%s')", salesInvoiceNumber, salesInvoiceNumber)
-	clientIdSubstring := fmt.Sprintf("temp.clientId = '%s'", clientId)
-	customerIdSubstring := fmt.Sprintf("temp.customerId = '%s'", customerId)
+	trackingNumberSubstring := fmt.Sprintf("(agg.billOfEntry = '%s' OR agg.salesInvoice = '%s')", salesInvoiceNumber, salesInvoiceNumber)
+	clientIdSubstring := fmt.Sprintf("agg.clientId = '%s'", clientId)
+	customerIdSubstring := fmt.Sprintf("agg.customerId = '%s'", customerId)
 
 	if salesInvoiceNumber == "all" && clientId == "all" && customerId == "all" {
 		searchQuery = fmt.Sprintf("%s", searchQuerySubstring)
@@ -1427,6 +1428,10 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 	} else {
 		searchQuery = fmt.Sprintf("%s AND %s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, clientIdSubstring, customerIdSubstring)
 	}
+
+	searchQuery = searchQuery + " group by billOfEntry, direction) temp WHERE 1=1"
+	searchQuery = searchQuery + filterSubstring
+	searchQuery = searchQuery + " ORDER BY temp.billOfEntryId DESC"
 
 	allTransactions, err := db.Query(searchQuery)
 	if err != nil {
@@ -1455,6 +1460,14 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		err := allTransactions.Scan(&billOfEntryId, &billOfEntry, &salesInvoiceId, &salesInvoice, &direction, &entryDate, &item, &warehouse, &clientId, &client, &customerId, &customer, &bigQuantity, &totalValue, &isPaid, &paidAmount, &date)
 		if err != nil {
 			panic(err.Error())
+		}
+
+		if len(salesInvoice) > 30 {
+			salesInvoice = salesInvoice[:30] + "..."
+		}
+
+		if len(customer) > 30 {
+			customer = customer[:30] + "..."
 		}
 
 		singleObject := OverviewTransaction{
@@ -1525,11 +1538,110 @@ func UpdatePaidAmount(w http.ResponseWriter, r *http.Request) {
 func UpdatePaymentDate(w http.ResponseWriter, r *http.Request) {
 
 	transactionId := r.FormValue("transactionId")
-	paymentDate := r.FormValue("paymentDate")
+	paymentDate := r.FormValue("paymentdate")
 
 	updateQuery := fmt.Sprintf(`UPDATE transaction
 		SET date = '%s'
 		WHERE id = '%s'`, paymentDate, transactionId)
+
+	_, err := db.Query(updateQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool{
+			"success": false,
+		}
+	} else {
+		result = map[string]bool{
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// UpdateField1 updates the field 1 and returns the status
+func UpdateField1(w http.ResponseWriter, r *http.Request) {
+
+	transactionId := r.FormValue("transactionId")
+	field := r.FormValue("field1")
+
+	updateQuery := fmt.Sprintf(`UPDATE transaction
+		SET delvDate1 = '%s'
+		WHERE id = '%s'`, field, transactionId)
+
+	_, err := db.Query(updateQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool{
+			"success": false,
+		}
+	} else {
+		result = map[string]bool{
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// UpdateField2 updates the field 2 and returns the status
+func UpdateField2(w http.ResponseWriter, r *http.Request) {
+
+	transactionId := r.FormValue("transactionId")
+	field := r.FormValue("field2")
+
+	updateQuery := fmt.Sprintf(`UPDATE transaction
+		SET delvDate2 = '%s'
+		WHERE id = '%s'`, field, transactionId)
+
+	_, err := db.Query(updateQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool{
+			"success": false,
+		}
+	} else {
+		result = map[string]bool{
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// UpdateRemarks updates the remarks and returns the status
+func UpdateRemarks(w http.ResponseWriter, r *http.Request) {
+
+	transactionId := r.FormValue("transactionId")
+	field := r.FormValue("remarks")
+
+	updateQuery := fmt.Sprintf(`UPDATE transaction
+		SET remarks = '%s'
+		WHERE id = '%s'`, field, transactionId)
 
 	_, err := db.Query(updateQuery)
 
