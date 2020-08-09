@@ -1401,6 +1401,8 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 			'...' AS date 
 		FROM 
 			transaction 
+		WHERE
+			isError=0
 		GROUP BY 
 			billOfEntry, 
 			salesInvoice
