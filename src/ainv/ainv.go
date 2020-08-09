@@ -149,7 +149,7 @@ func main() {
 
 	// create the router and define the APIs
 	router := mux.NewRouter()
-	ainvRouter := router.PathPrefix("/ainv-dev").Subrouter()
+	ainvRouter := router.PathPrefix("/ainv").Subrouter()
 
 	ainvRouter.HandleFunc("/", GetRoot).Methods("GET")
 
