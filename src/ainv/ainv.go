@@ -184,7 +184,7 @@ func main() {
 	http.Handle("/", router)
 
 	log.Println("Server started on port 1235")
-	log.Fatal(http.ListenAndServe(":1235", nil))
+	log.Fatal(http.ListenAndServe(":1234", nil))
 }
 
 // GetMD5Hash returns the MD5-hashed representation of a string
