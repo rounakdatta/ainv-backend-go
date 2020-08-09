@@ -44,6 +44,20 @@ type WarehouseEntity struct {
 	WarehouseName string `json:"warehouseName"`
 }
 
+type BillOfEntry struct {
+	BillOfEntryNumber string `json:"billOfEntryNumber"`
+	BillOfEntryId string `json:"billOfEntryId"`
+	BillOfEntryDate string `json:"billOfEntryDate"`
+}
+
+type SalesInvoice struct {
+	SalesInvoiceNumber string `json:"salesInvoiceNumber"`
+	SalesInvoiceId string `json:"salesInvoiceId"`
+	SalesInvoiceDate string `json:"salesInvoiceDate"`
+	CustomerId string `json:"customerId"`
+	CustomerName string `json:"customerName"`
+}
+
 type Item struct {
 	Name        string   `json:"name"`
 	Description []string `json:"description"`
@@ -72,12 +86,12 @@ type ItemInventory struct {
 
 type SalesTransaction struct {
 	TransactionId     string  `json:"transactionId"`
-	TrackingNumber    string  `json:"trackingNumber"`
+	BillOfEntry    string  `json:"billOfEntry"`
+	SalesInvoice    string  `json:"salesInvoice"`
 	EntryDate         string  `json:"entryDate"`
 	ItemId            string  `json:"itemId"`
 	ItemName          string  `json:"itemName"`
 	ItemVariant       string  `json:"itemVariant"`
-	WarehouseId       string  `json:"warehouseId"`
 	WarehouseName     string  `json:"warehouseName"`
 	WarehouseLocation string  `json:"warehouseLocation"`
 	ClientId          string  `json:"clientId"`
@@ -95,6 +109,27 @@ type SalesTransaction struct {
 	IsPaid            string  `json:"isPaid"`
 	PaidAmount        string  `json:"paidAmount"`
 	PaymentDate       string  `json:"paymentDate"`
+	Field1       string  `json:"field1"`
+	Field2       string  `json:"field2"`
+	Remarks       string  `json:"remarks"`
+}
+
+type OverviewTransaction struct {
+	BillOfEntryId  string `json:"billOfEntryId"`
+	BillOfEntry    string `json:"billOfEntry"`
+	SalesInvoiceId string `json:"salesInvoiceId"`
+	SalesInvoice   string `json:"salesInvoice"`
+	Direction      string `json:"direction"`
+	EntryDate      string `json:"entryDate"`
+	Item           string `json:"item"`
+	Warehouse      string `json:"warehouse"`
+	Client         string `json:"client"`
+	Customer       string `json:"customer"`
+	BigQuantity    string `json:"bigQuantity"`
+	TotalValue     string `json:"totalValue"`
+	IsPaid         string `json:"isPaid"`
+	PaidAmount     string `json:"paidAmount"`
+	Date           string `json:"date"`
 }
 
 var db *sql.DB
@@ -123,6 +158,8 @@ func main() {
 	ainvRouter.HandleFunc("/api/get/all/clients/", GetAllClients).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/all/customers/", GetAllCustomers).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/items/", GetItems).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/all/bills/", GetAllBills).Methods("GET")
+	ainvRouter.HandleFunc("/api/get/all/invoices/", GetAllInvoices).Methods("GET")
 	ainvRouter.HandleFunc("/api/get/rate/", GetRate).Methods("POST")
 
 	ainvRouter.HandleFunc("/api/put/warehouse/", CreateWarehouse).Methods("POST")
@@ -133,16 +170,20 @@ func main() {
 
 	ainvRouter.HandleFunc("/api/update/paidamount/", UpdatePaidAmount).Methods("POST")
 	ainvRouter.HandleFunc("/api/update/paymentdate/", UpdatePaymentDate).Methods("POST")
+	ainvRouter.HandleFunc("/api/update/field1/", UpdateField1).Methods("POST")
+	ainvRouter.HandleFunc("/api/update/field2/", UpdateField2).Methods("POST")
+	ainvRouter.HandleFunc("/api/update/remarks/", UpdateRemarks).Methods("POST")
 
 	ainvRouter.HandleFunc("/api/search/items/", SearchItems).Methods("POST")
 	ainvRouter.HandleFunc("/api/search/sales/", SearchSales).Methods("POST")
+	ainvRouter.HandleFunc("/api/search/overview/", SearchOverview).Methods("POST")
 
 	ainvRouter.HandleFunc("/api/register/", RegisterUser).Methods("POST")
 	ainvRouter.HandleFunc("/api/login/", LoginUser).Methods("POST")
 
 	http.Handle("/", router)
 
-	log.Println("Server started on port 1234")
+	log.Println("Server started on port 1235")
 	log.Fatal(http.ListenAndServe(":1234", nil))
 }
 
@@ -166,7 +207,7 @@ func GetWarehouses(w http.ResponseWriter, r *http.Request) {
 
 	getWhNamesQuery := `SELECT 
 		warehouseLocation,
-		GROUP_CONCAT(warehouseId SEPARATOR '$') warehouseId
+		GROUP_CONCAT(id SEPARATOR '$') warehouseId
 		FROM warehouse
 		GROUP BY warehouseLocation`
 
@@ -207,7 +248,7 @@ func GetAllWarehouses(w http.ResponseWriter, r *http.Request) {
 	var payload []WarehouseEntity
 
 	getWhNamesQuery := `SELECT 
-		warehouseId, CONCAT(warehouseName, ", ", warehouseLocation) AS warehouseName
+		id as warehouseId, CONCAT(warehouseName, ", ", warehouseLocation) AS warehouseName
 		FROM warehouse`
 
 	allWh, err := db.Query(getWhNamesQuery)
@@ -321,6 +362,94 @@ func GetAllCustomers(w http.ResponseWriter, r *http.Request) {
 	w.Write(payloadJSON)
 }
 
+// GetAllBills returns all the Bill of Entry numbers with their IDs
+func GetAllBills(w http.ResponseWriter, r *http.Request) {
+
+	var payload []BillOfEntry
+
+	getBillsQuery := `SELECT 
+		id, tracker, entryDate
+		FROM billOfEntry`
+
+	allBills, err := db.Query(getBillsQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allBills.Next() {
+		var billId string
+		var billNumber string
+		var billDate string
+
+		err := allBills.Scan(&billId, &billNumber, &billDate)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := BillOfEntry{
+			BillOfEntryId:   billId,
+			BillOfEntryNumber: billNumber,
+			BillOfEntryDate: billDate,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// GetAllInvoices returns all the Sales Invoice numbers with their IDs
+func GetAllInvoices(w http.ResponseWriter, r *http.Request) {
+
+	var payload []SalesInvoice
+
+	getInvoicesQuery := `SELECT 
+		id, tracker, entryDate, customerId, (select customerName from customer where id=customerId) as customerId
+		FROM salesInvoice`
+
+	allInvoices, err := db.Query(getInvoicesQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allInvoices.Next() {
+		var invId string
+		var invNumber string
+		var invDate string
+		var customerId string
+		var customerName string
+
+		err := allInvoices.Scan(&invId, &invNumber, &invDate, &customerId, &customerName)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		singleObject := SalesInvoice{
+			SalesInvoiceId:   invId,
+			SalesInvoiceNumber: invNumber,
+			SalesInvoiceDate: invDate,
+			CustomerId: customerId,
+			CustomerName: customerName,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
 // GetRate returns the rate for a particular item
 func GetRate(w http.ResponseWriter, r *http.Request) {
 
@@ -332,8 +461,8 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 	getRatesQuery := fmt.Sprintf(`SELECT im.rawPerSmall, im.smallPerBig, IFNULL(ic.bigcartonQuantity, 0) AS cartonQuantity
 		FROM itemMaster im
 		LEFT JOIN inventoryContents ic
-		ON (im.itemId = ic.itemId AND ic.warehouseId = '%s' AND ic.clientId = '%s')
-		WHERE im.itemId = '%s'`, requestedWarehouseId, requestedClientId, requestedItemId)
+		ON (im.id = ic.itemId AND ic.warehouseId = '%s' AND ic.clientId = '%s')
+		WHERE im.id = '%s'`, requestedWarehouseId, requestedClientId, requestedItemId)
 
 	log.Println(getRatesQuery)
 	rateDetails, err := db.Query(getRatesQuery)
@@ -414,7 +543,7 @@ func GetItems(w http.ResponseWriter, r *http.Request) {
 	getItemDetailsQuery := `SELECT
 		itemName,
 		GROUP_CONCAT(itemVariant SEPARATOR '$') itemVariant,
-		GROUP_CONCAT(itemId SEPARATOR '$') itemId
+		GROUP_CONCAT(id SEPARATOR '$') itemId
 	FROM
 		itemMaster
 	GROUP BY
@@ -625,7 +754,7 @@ func InventoryQuantityQualityCheck(quantity string, rate1 string, rate2 string, 
 	rate2Num, _ := strconv.Atoi(rate2)
 	totalPcsNum, _ := strconv.Atoi(totalPcs)
 
-	if totalPcsNum == 0 {
+	if totalPcsNum <= 0 {
 		return false
 	}
 	if quantityNum*rate1Num*rate2Num != totalPcsNum {
@@ -715,6 +844,8 @@ func CommitInventoryChanges(itemId string, warehouseId string, clientId string, 
 // CreateTransaction creates a transaction
 func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 
+	oldOrNew := r.FormValue("oldOrNew")
+	billRef := r.FormValue("billRef")
 	trackingNumber := r.FormValue("trackingNumber")
 	entryDate := r.FormValue("entryDate")
 	itemId := r.FormValue("itemId")
@@ -738,6 +869,9 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	isPaid := r.FormValue("isPaid")
 	paidAmount := r.FormValue("paidAmount")
 	date := r.FormValue("date")
+	field1 := r.FormValue("field1")
+	field2 := r.FormValue("field2")
+	remarks := r.FormValue("remarks")
 
 	changeValue = strings.TrimSpace(changeValue)
 	if date == "Expected Date" {
@@ -763,11 +897,84 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
-	(trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
-	VALUES
-	('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s', '%s')`, trackingNumber, entryDate, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date)
+	if comeOrGo == "in" {
+		billRef = trackingNumber
+		trackingNumber = "NULL"
 
+		if oldOrNew == "New!" {
+
+			beEntryQuery := fmt.Sprintf(`
+				INSERT INTO billOfEntry (tracker, entryDate) VALUES ('%s', '%s')
+			`, billRef, entryDate)
+			_, err := db.Query(beEntryQuery)
+
+			if err != nil {
+				log.Println(err)
+				result = map[string]bool{
+					"success": false,
+				}
+			} else {
+				result = map[string]bool{
+					"success": true,
+				}
+			}
+
+			beIdSelectQuery := fmt.Sprintf(`
+				SELECT id FROM billOfEntry WHERE tracker='%s'
+			`, billRef)
+
+			beData := db.QueryRow(beIdSelectQuery)
+			beData.Scan(&billRef)
+
+		} else {
+
+			beIdSelectQuery := fmt.Sprintf(`
+				SELECT id FROM billOfEntry WHERE tracker='%s'
+			`, billRef)
+
+			beData := db.QueryRow(beIdSelectQuery)
+			beData.Scan(&billRef)
+
+			billRef = fmt.Sprintf("'%s'", billRef)
+		}
+
+	} else {
+		if oldOrNew == "New!" {
+			siEntryQuery := fmt.Sprintf(`
+				INSERT INTO salesInvoice (tracker, entryDate) VALUES ('%s', '%s')
+			`, trackingNumber, entryDate)
+			_, err := db.Query(siEntryQuery)
+
+			if err != nil {
+				log.Println(err)
+				result = map[string]bool{
+					"success": false,
+				}
+			} else {
+				result = map[string]bool{
+					"success": true,
+				}
+			}
+
+			siSelectQuery := fmt.Sprintf(`
+				SELECT id FROM salesInvoice WHERE tracker='%s'
+			`, trackingNumber)
+
+			siData := db.QueryRow(siSelectQuery)
+			siData.Scan(&trackingNumber)
+
+			trackingNumber = fmt.Sprintf("'%s'", trackingNumber)
+		} else {
+			trackingNumber = oldOrNew
+		}
+	}
+
+	transactionQuery := fmt.Sprintf(`INSERT INTO transaction
+	(billOfEntry, salesInvoice, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date, delvDate1, delvDate2, remarks)
+	VALUES
+	(%s, %s, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %s, '%s', '%s', '%s', '%s', '%s')`, billRef, trackingNumber, itemId, warehouseId, comeOrGo, clientId, customerId, bigQuantity, currentValue, changeValue, finalValue, secretRate1, secretRate2, totalPcs, assdValue, dutyValue, gstValue, totalValue, valuePerPiece, totalPieces, isPaid, paidAmount, date, field1, field2, remarks)
+
+	fmt.Println(transactionQuery)
 	_, err := db.Query(transactionQuery)
 
 	if err != nil {
@@ -823,10 +1030,10 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 		FROM inventoryContents inv, itemMaster itm, warehouse wh, client cl
 		WHERE inv.itemId IN (%s) AND
 		inv.clientId IN (%s) AND
-		inv.itemId = itm.itemId AND
-		inv.warehouseId = wh.warehouseId AND
+		inv.itemId = itm.id AND
+		inv.warehouseId = wh.id AND
 		inv.clientId = cl.id AND
-		wh.warehouseId IN (%s)`, items, clients, locations)
+		wh.id IN (%s)`, items, clients, locations)
 
 	allContents, err := db.Query(searchQuery)
 	if err != nil {
@@ -882,7 +1089,7 @@ func SearchItems(w http.ResponseWriter, r *http.Request) {
 // SearchSales searches for the sales transactions by filters
 func SearchSales(w http.ResponseWriter, r *http.Request) {
 
-	salesInvoiceNumber := r.FormValue("salesInvoiceNumber")
+	billOfEntry := r.FormValue("billOfEntry")
 	clientId := r.FormValue("clientId")
 	customerId := r.FormValue("customerId")
 	searchFilter := r.FormValue("filter")
@@ -891,27 +1098,320 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 	var searchQuery string
 
 	var filterSubstring string
+	var billOrSales string
 	if searchFilter == "in" {
 		filterSubstring = " AND tr.comeOrGo = 'in'"
+		billOrSales = "billOfEntry"
 	} else if searchFilter == "out" {
 		filterSubstring = " AND tr.comeOrGo = 'out'"
+		billOrSales = "salesInvoice"
+	} else {
+		filterSubstring = ""
+		billOrSales = "salesInvoice"
+	}
+
+	searchQuerySubstring := fmt.Sprintf(`
+		SELECT
+		tr.id,
+		IFNULL((select tracker from billOfEntry where id=tr.billOfEntry), 'N/A') as billOfEntry,
+		IFNULL((select tracker from salesInvoice where id=tr.salesInvoice), 'N/A') as salesInvoice,
+	IFNULL((
+	SELECT
+		entryDate
+	FROM
+		%s
+	WHERE
+		id = tr.%s
+	), 'N/A') AS entryDate,
+	tr.itemId,
+	im.itemName,
+	im.itemVariant,
+	wh.warehouseName,
+	wh.warehouseLocation,
+	tr.clientId,
+	cl.clientName,
+	tr.customerId,
+	cu.customerName,
+	tr.comeOrGo,
+	tr.changeValue,
+	tr.finalValue,
+	tr.totalPcs,
+	tr.dutyValue,
+	tr.gstValue,
+	tr.totalValue,
+	tr.isPaid,
+	tr.paidAmount,
+	tr.date,
+	tr.delvDate1,
+	tr.delvDate2,
+	tr.remarks
+	FROM transaction
+		tr,
+		itemMaster im,
+		warehouse wh,
+		client cl,
+		customer cu
+	WHERE
+		tr.itemId = im.id AND tr.warehouseId = wh.id AND tr.clientId = cl.id AND tr.customerId = cu.id
+	`, billOrSales, billOrSales)
+
+	searchQuerySubstring = searchQuerySubstring + filterSubstring
+
+	trackingNumberSubstring := fmt.Sprintf("tr.billOfEntry = '%s'", billOfEntry)
+	clientIdSubstring := fmt.Sprintf("tr.clientId = '%s'", clientId)
+	customerIdSubstring := fmt.Sprintf("tr.customerId = '%s'", customerId)
+
+	if billOfEntry == "all" && clientId == "all" && customerId == "all" {
+		searchQuery = fmt.Sprintf("%s", searchQuerySubstring)
+	} else if billOfEntry == "all" && customerId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, clientIdSubstring)
+	} else if clientId == "all" && customerId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, trackingNumberSubstring)
+	} else if billOfEntry == "all" && clientId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s", searchQuerySubstring, customerIdSubstring)
+	} else if billOfEntry == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, clientIdSubstring, customerIdSubstring)
+	} else if clientId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, customerIdSubstring)
+	} else if customerId == "all" {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, clientIdSubstring)
+	} else {
+		searchQuery = fmt.Sprintf("%s AND %s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, clientIdSubstring, customerIdSubstring)
+	}
+
+	allTransactions, err := db.Query(searchQuery)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for allTransactions.Next() {
+		var transactionId string
+		var billOfEntry string
+		var salesInvoice string
+		var entryDate string
+		var itemId string
+		var itemName string
+		var itemVariant string
+		var warehouseName string
+		var warehouseLocation string
+		var clientId string
+		var clientName string
+		var customerId string
+		var customerName string
+		var comeOrGo string
+		var changeValue string
+		var finalValue string
+		var totalPcs string
+		var materialValue string
+		var gstValue string
+		var totalValue string
+		var valuePerPiece float64
+		var isPaid string
+		var paidAmount string
+		var paymentDate string
+		var field1 string
+		var field2 string
+		var remarks string
+
+		err := allTransactions.Scan(&transactionId, &billOfEntry, &salesInvoice, &entryDate, &itemId, &itemName, &itemVariant, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &comeOrGo, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate, &field1, &field2, &remarks)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		totalValueFloat, _ := strconv.ParseFloat(totalValue, 64)
+		totalPcsFloat, _ := strconv.ParseFloat(totalPcs, 64)
+		valuePerPiece = totalValueFloat / totalPcsFloat
+
+		singleObject := SalesTransaction{
+			TransactionId:     transactionId,
+			BillOfEntry:    billOfEntry,
+			SalesInvoice:    salesInvoice,
+			EntryDate:         entryDate,
+			ItemId:            itemId,
+			ItemName:          itemName,
+			ItemVariant:       itemVariant,
+			WarehouseName:     warehouseName,
+			WarehouseLocation: warehouseLocation,
+			ClientId:          clientId,
+			ClientName:        clientName,
+			CustomerId:        customerId,
+			CustomerName:      customerName,
+			ComeOrGo:          comeOrGo,
+			ChangeStock:       changeValue,
+			FinalStock:        finalValue,
+			TotalPcs:          totalPcs,
+			MaterialValue:     materialValue,
+			GstValue:          gstValue,
+			TotalValue:        totalValue,
+			ValuePerPiece:     valuePerPiece,
+			IsPaid:            isPaid,
+			PaidAmount:        paidAmount,
+			PaymentDate:       paymentDate,
+			Field1: field1,
+			Field2: field2,
+			Remarks: remarks,
+		}
+
+		payload = append(payload, singleObject)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// SearchOverview searches overview of transactions by filters
+func SearchOverview(w http.ResponseWriter, r *http.Request) {
+
+	salesInvoiceNumber := r.FormValue("salesInvoiceNumber")
+	clientId := r.FormValue("clientId")
+	customerId := r.FormValue("customerId")
+	searchFilter := r.FormValue("filter")
+
+	var payload []OverviewTransaction
+	var searchQuery string
+
+	var filterSubstring string
+	if searchFilter == "in" {
+		filterSubstring = " AND temp.direction = 'in'"
+	} else if searchFilter == "out" {
+		filterSubstring = " AND temp.direction = 'out'"
 	} else {
 		filterSubstring = ""
 	}
 
-	searchQuerySubstring := fmt.Sprintf(`SELECT
-		tr.id, tr.trackingNumber, tr.entryDate, tr.itemId, im.itemName, im.itemVariant, tr.warehouseId, wh.warehouseName, wh.warehouseLocation, tr.clientId, cl.clientName, tr.customerId, cu.customerName, tr.comeOrGo, tr.changeValue, tr.finalValue, tr.totalPcs, tr.dutyValue, tr.gstValue, tr.totalValue, tr.isPaid, tr.paidAmount, tr.date
-		FROM transaction tr, itemMaster im, warehouse wh, client cl, customer cu
-		WHERE tr.itemId = im.itemId AND
-		tr.warehouseId = wh.warehouseId AND
-		tr.clientId = cl.id AND
-		tr.customerId = cu.id`)
+	searchQuerySubstring := fmt.Sprintf(`SELECT * FROM
+	(SELECT 
+		GROUP_CONCAT(DISTINCT(IFNULL(billOfEntryId, 'N/A'))) as billOfEntryId, 
+		IFNULL(billOfEntry, 'N/A') as billOfEntry, 
+		GROUP_CONCAT(DISTINCT(IFNULL(salesInvoiceId, 'N/A'))) as salesInvoiceId, 
+		GROUP_CONCAT(DISTINCT(IFNULL(salesInvoice, 'N/A'))) as salesInvoice, 
+		direction, 
+		GROUP_CONCAT(DISTINCT(entryDate)) as entryDate, 
+		GROUP_CONCAT(DISTINCT(item)) as item, 
+		GROUP_CONCAT(DISTINCT(warehouse)) as warehouse,
+        GROUP_CONCAT(DISTINCT(clientId)) as clientId,
+		GROUP_CONCAT(DISTINCT(client)) as client, 
+        GROUP_CONCAT(DISTINCT(customerId)) as customerId,
+		GROUP_CONCAT(DISTINCT(customer)) as customer, 
+		sum(bigQuantity) as bigQuantity, 
+		sum(totalValue) as totalValue, 
+		GROUP_CONCAT(DISTINCT(isPaid)) as isPaid, 
+		sum(paidAmount) as paidAmount, 
+		GROUP_CONCAT(DISTINCT(date)) as date 
+	from 
+		(
+		SELECT 
+			billOfEntry as billOfEntryId, 
+			(
+			SELECT 
+				tracker 
+			FROM 
+				billOfEntry 
+			WHERE 
+				billOfEntry.id = billOfEntry
+			) AS billOfEntry, 
+			salesInvoice as salesInvoiceId, 
+			(
+			SELECT 
+				tracker 
+			FROM 
+				salesInvoice 
+			WHERE 
+				salesInvoice.id = salesInvoice
+			) AS salesInvoice, 
+			min(comeOrGo) as direction, 
+			(
+			select 
+				case when min(comeOrGo) like 'in' then GROUP_CONCAT(combo.bee) else GROUP_CONCAT(combo.sie) end 
+			from 
+				(
+				select 
+					id as be, 
+					NULL as si, 
+					entryDate as bee, 
+					NULL as sie 
+				from 
+					billOfEntry 
+				union all 
+				select 
+					NULL as be, 
+					id as si, 
+					NULL as bee, 
+					entryDate as sie 
+				from 
+					salesInvoice
+				) combo 
+			where 
+				billOfEntryId = combo.be 
+				or salesInvoice = combo.si
+			) as entryDate, 
+			Group_concat(
+			DISTINCT (
+				SELECT 
+				itemName 
+				FROM 
+				itemMaster 
+				WHERE 
+				itemMaster.id = itemId
+			) SEPARATOR ' '
+			) AS item, 
+			Group_concat(
+			DISTINCT (
+				SELECT 
+				Concat(
+					warehouseName, ', ', warehouseLocation
+				) 
+				FROM 
+				warehouse 
+				WHERE 
+				warehouse.id = warehouseId
+			) SEPARATOR ' '
+			) AS warehouse, 
+			min(clientId) as clientId,
+			Group_concat(
+			DISTINCT (
+				SELECT 
+				clientName 
+				FROM 
+				client 
+				WHERE 
+				client.id = clientId
+			) SEPARATOR ' '
+			) AS client, 
+			min(customerId) as customerId,
+			Group_concat(
+			DISTINCT (
+				SELECT 
+				customerName 
+				FROM 
+				customer 
+				WHERE 
+				customer.id = customerId
+			) SEPARATOR ' '
+			) AS customer, 
+			Sum(bigQuantity) AS bigQuantity, 
+			Sum(totalValue) AS totalValue, 
+			'...' AS isPaid, 
+			Sum(paidAmount) AS paidAmount, 
+			'...' AS date 
+		FROM 
+			transaction 
+		WHERE
+			isError=0
+		GROUP BY 
+			billOfEntry, 
+			salesInvoice
+		) agg WHERE 1=1
+	`)
 
-	searchQuerySubstring = searchQuerySubstring + filterSubstring
-
-	trackingNumberSubstring := fmt.Sprintf("tr.trackingNumber = '%s'", salesInvoiceNumber)
-	clientIdSubstring := fmt.Sprintf("tr.clientId = '%s'", clientId)
-	customerIdSubstring := fmt.Sprintf("tr.customerId = '%s'", customerId)
+	trackingNumberSubstring := fmt.Sprintf("(agg.billOfEntry = '%s' OR agg.salesInvoice = '%s')", salesInvoiceNumber, salesInvoiceNumber)
+	clientIdSubstring := fmt.Sprintf("agg.clientId = '%s'", clientId)
+	customerIdSubstring := fmt.Sprintf("agg.customerId = '%s'", customerId)
 
 	if salesInvoiceNumber == "all" && clientId == "all" && customerId == "all" {
 		searchQuery = fmt.Sprintf("%s", searchQuerySubstring)
@@ -931,71 +1431,63 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		searchQuery = fmt.Sprintf("%s AND %s AND %s AND %s", searchQuerySubstring, trackingNumberSubstring, clientIdSubstring, customerIdSubstring)
 	}
 
+	searchQuery = searchQuery + " group by billOfEntry, direction) temp WHERE 1=1"
+	searchQuery = searchQuery + filterSubstring
+	searchQuery = searchQuery + " ORDER BY temp.billOfEntryId DESC"
+
 	allTransactions, err := db.Query(searchQuery)
 	if err != nil {
 		panic(err.Error())
 	}
 
 	for allTransactions.Next() {
-		var transactionId string
-		var trackingNumber string
+		var billOfEntryId string
+		var billOfEntry string
+		var salesInvoiceId string
+		var salesInvoice string
+		var direction string
 		var entryDate string
-		var itemId string
-		var itemName string
-		var itemVariant string
-		var warehouseId string
-		var warehouseName string
-		var warehouseLocation string
+		var item string
+		var warehouse string
 		var clientId string
-		var clientName string
+		var client string
 		var customerId string
-		var customerName string
-		var comeOrGo string
-		var changeValue string
-		var finalValue string
-		var totalPcs string
-		var materialValue string
-		var gstValue string
+		var customer string
+		var bigQuantity string
 		var totalValue string
-		var valuePerPiece float64
 		var isPaid string
 		var paidAmount string
-		var paymentDate string
+		var date string
 
-		err := allTransactions.Scan(&transactionId, &trackingNumber, &entryDate, &itemId, &itemName, &itemVariant, &warehouseId, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &comeOrGo, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate)
+		err := allTransactions.Scan(&billOfEntryId, &billOfEntry, &salesInvoiceId, &salesInvoice, &direction, &entryDate, &item, &warehouse, &clientId, &client, &customerId, &customer, &bigQuantity, &totalValue, &isPaid, &paidAmount, &date)
 		if err != nil {
 			panic(err.Error())
 		}
 
-		totalValueFloat, _ := strconv.ParseFloat(totalValue, 64)
-		totalPcsFloat, _ := strconv.ParseFloat(totalPcs, 64)
-		valuePerPiece = totalValueFloat / totalPcsFloat
+		if len(salesInvoice) > 30 {
+			salesInvoice = salesInvoice[:30] + "..."
+		}
 
-		singleObject := SalesTransaction{
-			TransactionId:     transactionId,
-			TrackingNumber:    trackingNumber,
-			EntryDate:         entryDate,
-			ItemId:            itemId,
-			ItemName:          itemName,
-			ItemVariant:       itemVariant,
-			WarehouseId:       warehouseId,
-			WarehouseName:     warehouseName,
-			WarehouseLocation: warehouseLocation,
-			ClientId:          clientId,
-			ClientName:        clientName,
-			CustomerId:        customerId,
-			CustomerName:      customerName,
-			ComeOrGo:          comeOrGo,
-			ChangeStock:       changeValue,
-			FinalStock:        finalValue,
-			TotalPcs:          totalPcs,
-			MaterialValue:     materialValue,
-			GstValue:          gstValue,
-			TotalValue:        totalValue,
-			ValuePerPiece:     valuePerPiece,
-			IsPaid:            isPaid,
-			PaidAmount:        paidAmount,
-			PaymentDate:       paymentDate,
+		if len(customer) > 30 {
+			customer = customer[:30] + "..."
+		}
+
+		singleObject := OverviewTransaction{
+			BillOfEntryId: billOfEntryId,
+			BillOfEntry: billOfEntry,
+			SalesInvoiceId: salesInvoiceId,
+			SalesInvoice: salesInvoice,
+			Direction: direction,
+			EntryDate: entryDate,
+			Item: item,
+			Warehouse: warehouse,
+			Client: client,
+			Customer: customer,
+			BigQuantity: bigQuantity,
+			TotalValue: totalValue,
+			IsPaid: isPaid,
+			PaidAmount: paidAmount,
+			Date: date,
 		}
 
 		payload = append(payload, singleObject)
@@ -1018,7 +1510,7 @@ func UpdatePaidAmount(w http.ResponseWriter, r *http.Request) {
 
 	updateQuery := fmt.Sprintf(`UPDATE transaction
 		SET paidAmount = '%s',
-		isPaid = CASE WHEN totalValue = paidAmount THEN true ELSE false END
+		isPaid = CASE WHEN cast(totalValue as unsigned) = cast(paidAmount as unsigned) THEN true ELSE false END
 		WHERE id = '%s'`, paidAmount, transactionId)
 
 	_, err := db.Query(updateQuery)
@@ -1048,11 +1540,110 @@ func UpdatePaidAmount(w http.ResponseWriter, r *http.Request) {
 func UpdatePaymentDate(w http.ResponseWriter, r *http.Request) {
 
 	transactionId := r.FormValue("transactionId")
-	paymentDate := r.FormValue("paymentDate")
+	paymentDate := r.FormValue("paymentdate")
 
 	updateQuery := fmt.Sprintf(`UPDATE transaction
 		SET date = '%s'
 		WHERE id = '%s'`, paymentDate, transactionId)
+
+	_, err := db.Query(updateQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool{
+			"success": false,
+		}
+	} else {
+		result = map[string]bool{
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// UpdateField1 updates the field 1 and returns the status
+func UpdateField1(w http.ResponseWriter, r *http.Request) {
+
+	transactionId := r.FormValue("transactionId")
+	field := r.FormValue("field1")
+
+	updateQuery := fmt.Sprintf(`UPDATE transaction
+		SET delvDate1 = '%s'
+		WHERE id = '%s'`, field, transactionId)
+
+	_, err := db.Query(updateQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool{
+			"success": false,
+		}
+	} else {
+		result = map[string]bool{
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// UpdateField2 updates the field 2 and returns the status
+func UpdateField2(w http.ResponseWriter, r *http.Request) {
+
+	transactionId := r.FormValue("transactionId")
+	field := r.FormValue("field2")
+
+	updateQuery := fmt.Sprintf(`UPDATE transaction
+		SET delvDate2 = '%s'
+		WHERE id = '%s'`, field, transactionId)
+
+	_, err := db.Query(updateQuery)
+
+	var result map[string]bool
+
+	if err != nil {
+		result = map[string]bool{
+			"success": false,
+		}
+	} else {
+		result = map[string]bool{
+			"success": true,
+		}
+	}
+
+	payloadJSON, err := json.Marshal(result)
+	if err != nil {
+		log.Println(err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(payloadJSON)
+}
+
+// UpdateRemarks updates the remarks and returns the status
+func UpdateRemarks(w http.ResponseWriter, r *http.Request) {
+
+	transactionId := r.FormValue("transactionId")
+	field := r.FormValue("remarks")
+
+	updateQuery := fmt.Sprintf(`UPDATE transaction
+		SET remarks = '%s'
+		WHERE id = '%s'`, field, transactionId)
 
 	_, err := db.Query(updateQuery)
 
