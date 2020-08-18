@@ -22,6 +22,9 @@ type Rate struct {
 	RawPerSmall    string `json:"rawPerSmall"`
 	SmallPerBig    string `json:"smallPerBig"`
 	CartonQuantity string `json:"cartonQuantity"`
+	SmallUnit    string `json:"smallUnit"`
+	MediumUnit    string `json:"mediumUnit"`
+	BigUnit string `json:"bigUnit"`
 }
 
 type Warehouse struct {
@@ -183,7 +186,7 @@ func main() {
 
 	http.Handle("/", router)
 
-	log.Println("Server started on port 1235")
+	log.Println("Server started on port 1234")
 	log.Fatal(http.ListenAndServe(":1234", nil))
 }
 
@@ -458,7 +461,7 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 	requestedClientId := r.FormValue("clientId")
 	var payload []Rate
 
-	getRatesQuery := fmt.Sprintf(`SELECT im.rawPerSmall, im.smallPerBig, IFNULL(ic.bigcartonQuantity, 0) AS cartonQuantity
+	getRatesQuery := fmt.Sprintf(`SELECT im.rawPerSmall, im.smallPerBig, IFNULL(ic.bigcartonQuantity, 0) AS cartonQuantity, im.uomRaw AS smallUnit, im.uomSmall AS mediumUnit, im.uomBig AS bigUnit
 		FROM itemMaster im
 		LEFT JOIN inventoryContents ic
 		ON (im.id = ic.itemId AND ic.warehouseId = '%s' AND ic.clientId = '%s')
@@ -474,8 +477,11 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 		var rawPerSmall string
 		var smallPerBig string
 		var cartonQuantity string
+		var smallUnit string
+		var mediumUnit string
+		var bigUnit string
 
-		err := rateDetails.Scan(&rawPerSmall, &smallPerBig, &cartonQuantity)
+		err := rateDetails.Scan(&rawPerSmall, &smallPerBig, &cartonQuantity, &smallUnit, &mediumUnit, &bigUnit)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -484,6 +490,9 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 			RawPerSmall:    rawPerSmall,
 			SmallPerBig:    smallPerBig,
 			CartonQuantity: cartonQuantity,
+			SmallUnit:    smallUnit,
+			MediumUnit:    mediumUnit,
+			BigUnit: bigUnit,
 		}
 
 		payload = append(payload, singleObject)
@@ -749,15 +758,16 @@ func InventoryContentQualityCheck(direction string, currentInv string, changeInv
 
 // InventoryQuantityQualityCheck ensures the total quantity calculation is correct
 func InventoryQuantityQualityCheck(quantity string, rate1 string, rate2 string, totalPcs string) bool {
-	quantityNum, _ := strconv.Atoi(quantity)
-	rate1Num, _ := strconv.Atoi(rate1)
-	rate2Num, _ := strconv.Atoi(rate2)
-	totalPcsNum, _ := strconv.Atoi(totalPcs)
+	quantityNum, _ := strconv.ParseFloat(quantity, 64)
+	rate1Num, _ := strconv.ParseFloat(rate1, 64)
+	rate2Num, _ := strconv.ParseFloat(rate2, 64)
+	totalPcsNum, _ := strconv.ParseFloat(totalPcs, 64)
 
 	if totalPcsNum <= 0 {
 		return false
 	}
-	if quantityNum*rate1Num*rate2Num != totalPcsNum {
+	// approximately compare
+	if int(quantityNum*rate1Num*rate2Num) != int(totalPcsNum) {
 		return false
 	}
 
