@@ -758,16 +758,9 @@ func InventoryContentQualityCheck(direction string, currentInv string, changeInv
 
 // InventoryQuantityQualityCheck ensures the total quantity calculation is correct
 func InventoryQuantityQualityCheck(quantity string, rate1 string, rate2 string, totalPcs string) bool {
-	quantityNum, _ := strconv.ParseFloat(quantity, 64)
-	rate1Num, _ := strconv.ParseFloat(rate1, 64)
-	rate2Num, _ := strconv.ParseFloat(rate2, 64)
 	totalPcsNum, _ := strconv.ParseFloat(totalPcs, 64)
 
 	if totalPcsNum <= 0 {
-		return false
-	}
-	// approximately compare
-	if int(quantityNum*rate1Num*rate2Num) != int(totalPcsNum) {
 		return false
 	}
 
@@ -812,9 +805,9 @@ func checkCount(rows *sql.Row) (count int) {
 
 // CommitInventoryChanges commits the inventory changes to the inventory table
 func CommitInventoryChanges(itemId string, warehouseId string, clientId string, direction string, currentValue string, changeValue string, finalValue string, bigQuantity string, secretRate1 string, secretRate2 string, totalPcs string) bool {
-	bigQuantityNum, _ := strconv.Atoi(bigQuantity)
-	secretRate1Num, _ := strconv.Atoi(secretRate1)
-	secretRate2Num, _ := strconv.Atoi(secretRate2)
+	bigQuantityNum, _ := strconv.ParseFloat(bigQuantity, 64)
+	secretRate1Num, _ := strconv.ParseFloat(secretRate1, 64)
+	secretRate2Num, _ := strconv.ParseFloat(secretRate2, 64)
 
 	if direction == "out" {
 		bigQuantityNum = -bigQuantityNum
@@ -826,13 +819,13 @@ func CommitInventoryChanges(itemId string, warehouseId string, clientId string, 
 	var executionQuery string
 
 	updateQuery := fmt.Sprintf(`UPDATE inventoryContents
-		SET bigcartonQuantity = bigcartonQuantity + %d, smallboxQuantity = smallboxQuantity + %d, itemQuantity = itemQuantity + %d
+		SET bigcartonQuantity = bigcartonQuantity + %f, smallboxQuantity = smallboxQuantity + %f, itemQuantity = itemQuantity + %f
 		WHERE itemId = '%s' AND warehouseId = '%s' AND clientId = '%s' AND bigcartonQuantity = '%s'`, bigQuantityNum, smallboxQuantityNum, itemQuantityNum, itemId, warehouseId, clientId, currentValue)
 
 	insertQuery := fmt.Sprintf(`INSERT INTO inventoryContents
 		(itemId, itemQuantity, smallboxQuantity, bigcartonQuantity, warehouseId, clientId)
 		VALUES
-		('%s', '%d', '%d', '%s', '%s', '%s')`, itemId, itemQuantityNum, smallboxQuantityNum, bigQuantity, warehouseId, clientId)
+		('%s', '%f', '%f', '%s', '%s', '%s')`, itemId, itemQuantityNum, smallboxQuantityNum, bigQuantity, warehouseId, clientId)
 
 	checkerQuery := fmt.Sprintf(`SELECT COUNT(*) FROM inventoryContents WHERE itemId = '%s' AND warehouseId = '%s' AND clientId = '%s'`, itemId, warehouseId, clientId)
 	countRow := db.QueryRow(checkerQuery)
@@ -867,8 +860,8 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	currentValue := r.FormValue("currentValue")
 	changeValue := r.FormValue("changeValue")
 	finalValue := r.FormValue("finalValue")
-	secretRate1 := r.FormValue("secretRate1")
-	secretRate2 := r.FormValue("secretRate2")
+	secretRate1 := r.FormValue("secretRate2")
+	secretRate2 := r.FormValue("secretRate1")
 	totalPcs := r.FormValue("totalPcs")
 	assdValue := r.FormValue("assdValue")
 	dutyValue := r.FormValue("dutyValue")
@@ -914,8 +907,8 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 		if oldOrNew == "New!" {
 
 			beEntryQuery := fmt.Sprintf(`
-				INSERT INTO billOfEntry (tracker, entryDate) VALUES ('%s', '%s')
-			`, billRef, entryDate)
+				INSERT INTO billOfEntry (tracker, entryDate, customerId) VALUES ('%s', '%s', '%s')
+			`, billRef, entryDate, clientId)
 			_, err := db.Query(beEntryQuery)
 
 			if err != nil {
@@ -951,8 +944,8 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if oldOrNew == "New!" {
 			siEntryQuery := fmt.Sprintf(`
-				INSERT INTO salesInvoice (tracker, entryDate) VALUES ('%s', '%s')
-			`, trackingNumber, entryDate)
+				INSERT INTO salesInvoice (tracker, entryDate, customerId) VALUES ('%s', '%s', '%s')
+			`, trackingNumber, entryDate, customerId)
 			_, err := db.Query(siEntryQuery)
 
 			if err != nil {
