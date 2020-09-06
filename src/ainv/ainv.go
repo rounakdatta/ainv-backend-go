@@ -115,6 +115,7 @@ type SalesTransaction struct {
 	Field1       string  `json:"field1"`
 	Field2       string  `json:"field2"`
 	Remarks       string  `json:"remarks"`
+	RawUnit       string  `json:"rawUnit"`
 }
 
 type OverviewTransaction struct {
@@ -1147,7 +1148,8 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 	tr.date,
 	tr.delvDate1,
 	tr.delvDate2,
-	tr.remarks
+	tr.remarks,
+	im.uomRaw
 	FROM transaction
 		tr,
 		itemMaster im,
@@ -1215,8 +1217,9 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 		var field1 string
 		var field2 string
 		var remarks string
+		var rawUnit string
 
-		err := allTransactions.Scan(&transactionId, &billOfEntry, &salesInvoice, &entryDate, &itemId, &itemName, &itemVariant, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &comeOrGo, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate, &field1, &field2, &remarks)
+		err := allTransactions.Scan(&transactionId, &billOfEntry, &salesInvoice, &entryDate, &itemId, &itemName, &itemVariant, &warehouseName, &warehouseLocation, &clientId, &clientName, &customerId, &customerName, &comeOrGo, &changeValue, &finalValue, &totalPcs, &materialValue, &gstValue, &totalValue, &isPaid, &paidAmount, &paymentDate, &field1, &field2, &remarks, &rawUnit)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -1253,6 +1256,7 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 			Field1: field1,
 			Field2: field2,
 			Remarks: remarks,
+			RawUnit: rawUnit,
 		}
 
 		payload = append(payload, singleObject)
