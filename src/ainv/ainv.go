@@ -22,9 +22,9 @@ type Rate struct {
 	RawPerSmall    string `json:"rawPerSmall"`
 	SmallPerBig    string `json:"smallPerBig"`
 	CartonQuantity string `json:"cartonQuantity"`
-	SmallUnit    string `json:"smallUnit"`
-	MediumUnit    string `json:"mediumUnit"`
-	BigUnit string `json:"bigUnit"`
+	SmallUnit      string `json:"smallUnit"`
+	MediumUnit     string `json:"mediumUnit"`
+	BigUnit        string `json:"bigUnit"`
 }
 
 type Warehouse struct {
@@ -49,16 +49,16 @@ type WarehouseEntity struct {
 
 type BillOfEntry struct {
 	BillOfEntryNumber string `json:"billOfEntryNumber"`
-	BillOfEntryId string `json:"billOfEntryId"`
-	BillOfEntryDate string `json:"billOfEntryDate"`
+	BillOfEntryId     string `json:"billOfEntryId"`
+	BillOfEntryDate   string `json:"billOfEntryDate"`
 }
 
 type SalesInvoice struct {
 	SalesInvoiceNumber string `json:"salesInvoiceNumber"`
-	SalesInvoiceId string `json:"salesInvoiceId"`
-	SalesInvoiceDate string `json:"salesInvoiceDate"`
-	CustomerId string `json:"customerId"`
-	CustomerName string `json:"customerName"`
+	SalesInvoiceId     string `json:"salesInvoiceId"`
+	SalesInvoiceDate   string `json:"salesInvoiceDate"`
+	CustomerId         string `json:"customerId"`
+	CustomerName       string `json:"customerName"`
 }
 
 type Item struct {
@@ -89,8 +89,8 @@ type ItemInventory struct {
 
 type SalesTransaction struct {
 	TransactionId     string  `json:"transactionId"`
-	BillOfEntry    string  `json:"billOfEntry"`
-	SalesInvoice    string  `json:"salesInvoice"`
+	BillOfEntry       string  `json:"billOfEntry"`
+	SalesInvoice      string  `json:"salesInvoice"`
 	EntryDate         string  `json:"entryDate"`
 	ItemId            string  `json:"itemId"`
 	ItemName          string  `json:"itemName"`
@@ -112,10 +112,10 @@ type SalesTransaction struct {
 	IsPaid            string  `json:"isPaid"`
 	PaidAmount        string  `json:"paidAmount"`
 	PaymentDate       string  `json:"paymentDate"`
-	Field1       string  `json:"field1"`
-	Field2       string  `json:"field2"`
-	Remarks       string  `json:"remarks"`
-	RawUnit       string  `json:"rawUnit"`
+	Field1            string  `json:"field1"`
+	Field2            string  `json:"field2"`
+	Remarks           string  `json:"remarks"`
+	RawUnit           string  `json:"rawUnit"`
 }
 
 type OverviewTransaction struct {
@@ -151,9 +151,13 @@ func main() {
 
 	defer db.Close()
 
+	// obtain the cli arguments
+	serviceName := os.Args[1]
+	servicePort := os.Args[2]
+
 	// create the router and define the APIs
 	router := mux.NewRouter()
-	ainvRouter := router.PathPrefix("/ainv").Subrouter()
+	ainvRouter := router.PathPrefix("/" + serviceName).Subrouter()
 
 	ainvRouter.HandleFunc("/", GetRoot).Methods("GET")
 
@@ -187,8 +191,8 @@ func main() {
 
 	http.Handle("/", router)
 
-	log.Println("Server started on port 1234")
-	log.Fatal(http.ListenAndServe(":1234", nil))
+	log.Printf("Server started on port %s", servicePort)
+	log.Fatal(http.ListenAndServe(":"+servicePort, nil))
 }
 
 // GetMD5Hash returns the MD5-hashed representation of a string
@@ -391,9 +395,9 @@ func GetAllBills(w http.ResponseWriter, r *http.Request) {
 		}
 
 		singleObject := BillOfEntry{
-			BillOfEntryId:   billId,
+			BillOfEntryId:     billId,
 			BillOfEntryNumber: billNumber,
-			BillOfEntryDate: billDate,
+			BillOfEntryDate:   billDate,
 		}
 
 		payload = append(payload, singleObject)
@@ -435,11 +439,11 @@ func GetAllInvoices(w http.ResponseWriter, r *http.Request) {
 		}
 
 		singleObject := SalesInvoice{
-			SalesInvoiceId:   invId,
+			SalesInvoiceId:     invId,
 			SalesInvoiceNumber: invNumber,
-			SalesInvoiceDate: invDate,
-			CustomerId: customerId,
-			CustomerName: customerName,
+			SalesInvoiceDate:   invDate,
+			CustomerId:         customerId,
+			CustomerName:       customerName,
 		}
 
 		payload = append(payload, singleObject)
@@ -491,9 +495,9 @@ func GetRate(w http.ResponseWriter, r *http.Request) {
 			RawPerSmall:    rawPerSmall,
 			SmallPerBig:    smallPerBig,
 			CartonQuantity: cartonQuantity,
-			SmallUnit:    smallUnit,
-			MediumUnit:    mediumUnit,
-			BigUnit: bigUnit,
+			SmallUnit:      smallUnit,
+			MediumUnit:     mediumUnit,
+			BigUnit:        bigUnit,
 		}
 
 		payload = append(payload, singleObject)
@@ -1230,8 +1234,8 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 
 		singleObject := SalesTransaction{
 			TransactionId:     transactionId,
-			BillOfEntry:    billOfEntry,
-			SalesInvoice:    salesInvoice,
+			BillOfEntry:       billOfEntry,
+			SalesInvoice:      salesInvoice,
 			EntryDate:         entryDate,
 			ItemId:            itemId,
 			ItemName:          itemName,
@@ -1253,10 +1257,10 @@ func SearchSales(w http.ResponseWriter, r *http.Request) {
 			IsPaid:            isPaid,
 			PaidAmount:        paidAmount,
 			PaymentDate:       paymentDate,
-			Field1: field1,
-			Field2: field2,
-			Remarks: remarks,
-			RawUnit: rawUnit,
+			Field1:            field1,
+			Field2:            field2,
+			Remarks:           remarks,
+			RawUnit:           rawUnit,
 		}
 
 		payload = append(payload, singleObject)
@@ -1278,6 +1282,7 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 	clientId := r.FormValue("clientId")
 	customerId := r.FormValue("customerId")
 	searchFilter := r.FormValue("filter")
+	itemFilter := r.FormValue("itemName")
 
 	var payload []OverviewTransaction
 	var searchQuery string
@@ -1289,6 +1294,13 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		filterSubstring = " AND temp.direction = 'out'"
 	} else {
 		filterSubstring = ""
+	}
+
+	var itemFilterSubstring string
+	if itemFilter == "all" || itemFilter == "" {
+		itemFilterSubstring = ""
+	} else {
+		itemFilterSubstring = fmt.Sprintf(" AND temp.item = '%s'", itemFilter)
 	}
 
 	searchQuerySubstring := fmt.Sprintf(`SELECT * FROM
@@ -1440,6 +1452,7 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 
 	searchQuery = searchQuery + " group by billOfEntry, direction) temp WHERE 1=1"
 	searchQuery = searchQuery + filterSubstring
+	searchQuery = searchQuery + itemFilterSubstring
 	searchQuery = searchQuery + " ORDER BY temp.billOfEntryId DESC"
 
 	allTransactions, err := db.Query(searchQuery)
@@ -1480,21 +1493,21 @@ func SearchOverview(w http.ResponseWriter, r *http.Request) {
 		}
 
 		singleObject := OverviewTransaction{
-			BillOfEntryId: billOfEntryId,
-			BillOfEntry: billOfEntry,
+			BillOfEntryId:  billOfEntryId,
+			BillOfEntry:    billOfEntry,
 			SalesInvoiceId: salesInvoiceId,
-			SalesInvoice: salesInvoice,
-			Direction: direction,
-			EntryDate: entryDate,
-			Item: item,
-			Warehouse: warehouse,
-			Client: client,
-			Customer: customer,
-			BigQuantity: bigQuantity,
-			TotalValue: totalValue,
-			IsPaid: isPaid,
-			PaidAmount: paidAmount,
-			Date: date,
+			SalesInvoice:   salesInvoice,
+			Direction:      direction,
+			EntryDate:      entryDate,
+			Item:           item,
+			Warehouse:      warehouse,
+			Client:         client,
+			Customer:       customer,
+			BigQuantity:    bigQuantity,
+			TotalValue:     totalValue,
+			IsPaid:         isPaid,
+			PaidAmount:     paidAmount,
+			Date:           date,
 		}
 
 		payload = append(payload, singleObject)
