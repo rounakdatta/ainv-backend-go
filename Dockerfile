@@ -7,4 +7,4 @@ RUN go mod download
 COPY . ./
 RUN go build src/ainv/ainv.go
 
-CMD ["/app/ainv", "api", "1234"]
+CMD ["/app/ainv", "ainv", "1234"]
