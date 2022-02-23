@@ -142,7 +142,7 @@ func main() {
 	// connect to MySQL database
 	err := godotenv.Load()
 
-	databaseCredentials := fmt.Sprintf("%s:%s@/%s", os.Getenv("APP_USER"), os.Getenv("APP_PASSWORD"), os.Getenv("APP_DATABASE"))
+	databaseCredentials := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s", os.Getenv("APP_USER"), os.Getenv("APP_PASSWORD"), os.Getenv("DATABASE_HOST"), os.Getenv("APP_DATABASE"))
 	db, err = sql.Open("mysql", databaseCredentials)
 
 	if err != nil {
